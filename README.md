@@ -46,3 +46,11 @@ Los reportes quedan en `mspi/target/surefire-reports/` y el JAR en `mspi/target/
 - **Caché del wrapper sin permisos:** configurar `MAVEN_USER_HOME` en una ubicación escribible para esa terminal; es distinto del repositorio de dependencias controlado por `maven.repo.local`.
 
 Ficha y evidencia de la primera entrega: [HU-001](docs/hu/HU-001.md).
+
+## Arquitectura modular
+
+El backend declara doce módulos cerrados con paquetes `api` e `internal`; `gestion` coordina a través de las interfaces públicas. Esta estructura no implica que los dominios de negocio ya estén implementados.
+
+`clean verify` ejecuta además `ModularityTests`: comprueba los doce límites y demuestra que se rechazan ciclos, accesos a internos ajenos y dependencias no declaradas. Sus fixtures están fuera del código de producción.
+
+Reglas y procedimiento para incorporar contratos reales: [Arquitectura modular](docs/ARQUITECTURA-MODULAR.md). Alcance y evidencia: [HU-002](docs/hu/HU-002.md).
