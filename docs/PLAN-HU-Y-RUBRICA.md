@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-**Siguiente HU propuesta: HU-001.** Su cierre exige resolver y volver a verificar los bloqueos, no repetir el diagnóstico como si las pruebas ya hubieran pasado. El alcance operativo de la primera funcionalidad se seleccionará antes de iniciar esa etapa.
+El punto de partida dio lugar a **HU-001**, cuyo resultado y evidencia están en su [ficha](hu/HU-001.md). Tras revisar e integrar esa base, la siguiente historia es **HU-002: estructura modular**. El alcance operativo de la primera funcionalidad se seleccionará antes de iniciar esa etapa.
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.
