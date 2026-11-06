@@ -82,7 +82,7 @@ Reglas obligatorias:
 
 ## 5. Backlog propuesto y secuencia
 
-El estado y la evidencia de HU-001 se mantienen en su [ficha de ejecución](hu/HU-001.md). El resto del backlog permanece en estado **Propuesta**; el diagnóstico ya realizado se resume en la sección 8. Los números identifican historias; el orden de ejecución lo determinan las dependencias. No son estimaciones de duración ni compromisos de entrega.
+El estado y la evidencia de HU-001 y HU-002 se mantienen en sus fichas: [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md). El resto del backlog permanece en estado **Propuesta**; el diagnóstico ya realizado se resume en la sección 8. Los números identifican historias; el orden de ejecución lo determinan las dependencias. No son estimaciones de duración ni compromisos de entrega.
 
 ### Etapa inicial: estructura y entorno reproducible
 
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-El punto de partida dio lugar a **HU-001**, cuyo resultado y evidencia están en su [ficha](hu/HU-001.md). Tras revisar e integrar esa base, la siguiente historia es **HU-002: estructura modular**. El alcance operativo de la primera funcionalidad se seleccionará antes de iniciar esa etapa.
+El punto de partida dio lugar a **HU-001**, integrada mediante PR #1. **HU-002: estructura modular** continúa esa base; consultar su [ficha](hu/HU-002.md). Tras revisarla e integrarla, la siguiente historia es **HU-003: migraciones por ámbito**. El alcance operativo de la primera funcionalidad se seleccionará antes de iniciar esa etapa.
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.
