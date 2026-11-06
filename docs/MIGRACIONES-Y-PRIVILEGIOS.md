@@ -55,7 +55,7 @@ Secuencia inicial para un entorno dedicado:
 4. Reservar empresa desde el proceso técnico autorizado, usando UUID generado, nombre y zona horaria proporcionados, y esquema derivado. No existe un endpoint público para hacerlo en esta HU.
 5. Ejecutar psql con -v empresa_id=<uuid> -f mspi/src/main/resources/db/provisioning/tenant.sql. El script valida UUID y reserva EN_PREPARACION antes de crear identificadores; cita literales e identificadores mediante psql/format.
 6. Asignar contraseñas por canal protegido al migrador y runtime de esa empresa.
-7. Ejecutar tenant <uuid> con su migrador. No combinar ámbitos ni usar credencial universal.
+7. Ejecutar tenant <uuid> con su migrador. Terminar y verificar una empresa antes de iniciar la siguiente; no ejecutar migraciones empresariales en paralelo. No combinar ámbitos ni usar credencial universal. La coordinación automatizada se incorpora en HU-005.
 8. Verificar resultado y mantener bloqueada cualquier empresa incompleta. La recuperación y orquestación idempotente del alta completa corresponden a HU-005; los scripts son bootstrap inicial, no un flujo de reintento de negocio.
 
 Variables del comando técnico:
