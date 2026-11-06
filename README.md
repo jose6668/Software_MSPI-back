@@ -33,7 +33,7 @@ Maven Enforcer rechaza JDK distintos de 17. Las versiones de las dependencias de
 
 `MspiApplicationTests.contextLoads` arranca con JPA y una conexión común de runtime sobre PostgreSQL 17. El setup técnico de pruebas prepara la base mediante Flyway y credenciales separadas; `JdbcConnectionDetails` entrega a la aplicación únicamente la conexión ordinaria. Spring gestiona el contenedor y lo destruye al cerrar el contexto. No usa una base instalada, secretos reales o puerto fijo. Sin Docker la prueba falla: no se omite automáticamente.
 
-La aplicación no ejecuta Flyway automáticamente ni crea o actualiza tablas mediante Hibernate. HU-003 incorpora migraciones comunes/empresariales ejecutadas por un comando técnico separado. El aislamiento completo JPA por empresa sigue en HU-004; la prueba de arranque no lo sustituye. PostgreSQL 17.11 es la elección de pruebas y no fija producción.
+La aplicación no ejecuta Flyway automáticamente ni crea o actualiza tablas mediante Hibernate. HU-003 incorpora migraciones comunes/empresariales ejecutadas por un comando técnico separado. HU-004 comprueba el aislamiento JPA empresarial mediante un arnés interno; sesión y permisos reales se integran en HU-007/008. PostgreSQL 17.11 es la elección de pruebas y no fija producción.
 
 Los reportes quedan en `mspi/target/surefire-reports/` y el JAR en `mspi/target/`. El workflow [Backend CI](.github/workflows/backend-ci.yml) ejecuta `clean verify` con Java 17 en cada PR hacia `Develop` y en los pushes a esa rama; conserva reportes de pruebas y no realiza despliegues.
 
@@ -60,3 +60,9 @@ Reglas y procedimiento para incorporar contratos reales: [Arquitectura modular](
 El registro común y cada esquema empresarial tienen migraciones e historial Flyway separados. El bootstrap utiliza una identidad de aprovisionamiento, cada ámbito tiene su migrador y el acceso ordinario usa roles sin DDL. Los esquemas e identidades empresariales derivan de UUID internos.
 
 Preparación, permisos, comando técnico y límites de esta entrega: [Migraciones y privilegios](docs/MIGRACIONES-Y-PRIVILEGIOS.md). Criterios y evidencia: [HU-003](docs/hu/HU-003.md). Migrar no activa empresas ni completa el flujo de alta.
+
+## Persistencia empresarial
+
+La persistencia común y la empresarial usan unidades JPA distintas. Cada unidad de trabajo empresarial fija actor y empresa durante la transacción, con el runtime exclusivo de esa empresa y pools acotados. Se deshabilitan las cachés compartidas de entidades y consultas.
+
+La función está deshabilitada por defecto y su política inicial deniega acceso. Activarla exige límites explícitos y secretos externos; todavía no publica endpoints ni autentica usuarios reales. Configuración, ciclo de conexión y límites: [Aislamiento JPA](docs/AISLAMIENTO-JPA.md). Criterios y evidencia: [HU-004](docs/hu/HU-004.md).
