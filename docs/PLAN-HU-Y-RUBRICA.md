@@ -82,7 +82,7 @@ Reglas obligatorias:
 
 ## 5. Backlog propuesto y secuencia
 
-El estado y la evidencia de HU-001 y HU-002 se mantienen en sus fichas: [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md). El resto del backlog permanece en estado **Propuesta**; el diagnóstico ya realizado se resume en la sección 8. Los números identifican historias; el orden de ejecución lo determinan las dependencias. No son estimaciones de duración ni compromisos de entrega.
+El estado y la evidencia de HU-001 a HU-003 se mantienen en sus fichas: [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md). El resto permanece en estado **Propuesta**; el diagnóstico inicial se resume en la sección 8. Los números identifican historias; el orden depende de sus prerrequisitos. No son estimaciones ni compromisos de duración.
 
 ### Etapa inicial: estructura y entorno reproducible
 
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-El punto de partida dio lugar a **HU-001**, integrada mediante PR #1. **HU-002: estructura modular** continúa esa base; consultar su [ficha](hu/HU-002.md). Tras revisarla e integrarla, la siguiente historia es **HU-003: migraciones por ámbito**. El alcance operativo de la primera funcionalidad se seleccionará antes de iniciar esa etapa.
+HU-001 y HU-002 quedaron integradas mediante PR #1 y #2. **HU-003: migraciones por ámbito** continúa esa base; consultar su [ficha](hu/HU-003.md). Después de revisarla e integrarla corresponde **HU-004: aislamiento JPA y contexto empresarial**. El primer caso de uso operativo se seleccionará antes de su etapa.
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.

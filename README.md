@@ -31,9 +31,9 @@ bash ./mvnw --batch-mode --no-transfer-progress clean verify
 
 Maven Enforcer rechaza JDK distintos de 17. Las versiones de las dependencias de prueba se heredan de Spring Boot; no se necesita fijar otro BOM de Testcontainers.
 
-`MspiApplicationTests.contextLoads` arranca el contexto con JPA y Flyway habilitados, comprueba que el motor es PostgreSQL 17 y consulta la base mediante JPA. Spring gestiona el contenedor con `@ServiceConnection`; la base y la contraseña son exclusivas de esa ejecución y el contenedor se destruye al cerrar el contexto. No usa una base instalada ni un puerto fijo. Sin Docker la prueba falla: no se omite automáticamente.
+`MspiApplicationTests.contextLoads` arranca con JPA y una conexión común de runtime sobre PostgreSQL 17. El setup técnico de pruebas prepara la base mediante Flyway y credenciales separadas; `JdbcConnectionDetails` entrega a la aplicación únicamente la conexión ordinaria. Spring gestiona el contenedor y lo destruye al cerrar el contexto. No usa una base instalada, secretos reales o puerto fijo. Sin Docker la prueba falla: no se omite automáticamente.
 
-El perfil `test` no permite crear o actualizar tablas mediante Hibernate. Las migraciones empresariales y las pruebas de aislamiento se incorporan en HU-003/HU-004; esta prueba de arranque no las sustituye. PostgreSQL 17.11 es la elección del entorno de pruebas de HU-001 y no fija la versión de producción.
+La aplicación no ejecuta Flyway automáticamente ni crea o actualiza tablas mediante Hibernate. HU-003 incorpora migraciones comunes/empresariales ejecutadas por un comando técnico separado. El aislamiento completo JPA por empresa sigue en HU-004; la prueba de arranque no lo sustituye. PostgreSQL 17.11 es la elección de pruebas y no fija producción.
 
 Los reportes quedan en `mspi/target/surefire-reports/` y el JAR en `mspi/target/`. El workflow [Backend CI](.github/workflows/backend-ci.yml) ejecuta `clean verify` con Java 17 en cada PR hacia `Develop` y en los pushes a esa rama; conserva reportes de pruebas y no realiza despliegues.
 
@@ -54,3 +54,9 @@ El backend declara doce módulos cerrados con paquetes `api` e `internal`; `gest
 `clean verify` ejecuta además `ModularityTests`: comprueba los doce límites y demuestra que se rechazan ciclos, accesos a internos ajenos y dependencias no declaradas. Sus fixtures están fuera del código de producción.
 
 Reglas y procedimiento para incorporar contratos reales: [Arquitectura modular](docs/ARQUITECTURA-MODULAR.md). Alcance y evidencia: [HU-002](docs/hu/HU-002.md).
+
+## Migraciones
+
+El registro común y cada esquema empresarial tienen migraciones e historial Flyway separados. El bootstrap utiliza una identidad de aprovisionamiento, cada ámbito tiene su migrador y el acceso ordinario usa roles sin DDL. Los esquemas e identidades empresariales derivan de UUID internos.
+
+Preparación, permisos, comando técnico y límites de esta entrega: [Migraciones y privilegios](docs/MIGRACIONES-Y-PRIVILEGIOS.md). Criterios y evidencia: [HU-003](docs/hu/HU-003.md). Migrar no activa empresas ni completa el flujo de alta.

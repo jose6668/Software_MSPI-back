@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,7 +25,7 @@ class MspiApplicationTests {
 	private EntityManagerFactory entityManagerFactory;
 
 	@Autowired
-	private Flyway flyway;
+	private ApplicationContext context;
 
 	@Test
 	void contextLoads() throws Exception {
@@ -38,7 +39,13 @@ class MspiApplicationTests {
 					.isEqualTo("mspi_test");
 		}
 
-		assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
+		assertThat(context.getBeansOfType(Flyway.class)).isEmpty();
+		try (var connection = dataSource.getConnection();
+				var statement = connection.createStatement();
+				var result = statement.executeQuery("SELECT current_user")) {
+			assertThat(result.next()).isTrue();
+			assertThat(result.getString(1)).isEqualTo("mspi_common_runtime");
+		}
 	}
 
 }
