@@ -17,6 +17,16 @@ class ModularityTests {
 	private static final ImportOption INCLUDE_FIXTURES = location -> true;
 
 	@Test
+	void classifiesEveryProductionEntityIntoOnePersistenceScope() {
+		var production = new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+				.importPackages("software.mspi");
+		classes().that().areAnnotatedWith(jakarta.persistence.Entity.class)
+				.should().resideInAnyPackage("software.mspi.*.internal.persistence.common..",
+						"software.mspi.*.internal.persistence.tenant..")
+				.check(production);
+	}
+
+	@Test
 	void verifiesAllTwelveClosedModulesAndTheirApiBoundaries() {
 		assertThat(MODULES.stream().map(module -> module.getIdentifier().toString()))
 				.containsExactlyInAnyOrder(

@@ -82,7 +82,7 @@ Reglas obligatorias:
 
 ## 5. Backlog propuesto y secuencia
 
-El estado y la evidencia de HU-001 a HU-003 se mantienen en sus fichas: [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md). El resto permanece en estado **Propuesta**; el diagnóstico inicial se resume en la sección 8. Los números identifican historias; el orden depende de sus prerrequisitos. No son estimaciones ni compromisos de duración.
+El estado y la evidencia de HU-001 a HU-004 se mantienen en sus fichas: [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md), [HU-004](hu/HU-004.md). El resto permanece en estado **Propuesta**; el diagnóstico inicial se resume en la sección 8. Los números identifican historias; el orden depende de sus prerrequisitos. No son estimaciones ni compromisos de duración.
 
 ### Etapa inicial: estructura y entorno reproducible
 
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 y HU-002 quedaron integradas mediante PR #1 y #2. **HU-003: migraciones por ámbito** continúa esa base; consultar su [ficha](hu/HU-003.md). Después de revisarla e integrarla corresponde **HU-004: aislamiento JPA y contexto empresarial**. El primer caso de uso operativo se seleccionará antes de su etapa.
+HU-001 a HU-003 quedaron integradas mediante PR #1, #2 y #3. **HU-004: aislamiento JPA y contexto empresarial** continúa esa base; consultar su [ficha](hu/HU-004.md). Después de revisarla e integrarla corresponde **HU-005: recuperación de preparación y migraciones**. El primer caso de uso operativo se seleccionará antes de su etapa.
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.
