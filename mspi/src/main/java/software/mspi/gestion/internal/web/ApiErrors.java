@@ -23,6 +23,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
+import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.identidad.api.LoginLimitException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
@@ -112,7 +113,17 @@ final class ApiErrors {
             return new Problem(HttpStatus.UNAUTHORIZED, "CREDENCIALES_INVALIDAS", "Credenciales inválidas.");
         }
         if (failure instanceof LoginLimitException) {
-            return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente iniciar sesión más tarde.");
+            return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof InvitationFailure invitation) {
+            return switch (invitation.reason()) {
+                case UNAVAILABLE -> new Problem(HttpStatus.CONFLICT, "INVITACION_NO_DISPONIBLE",
+                        "La invitación no está disponible para esta operación.");
+                case DELIVERY -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ENVIO_NO_DISPONIBLE",
+                        "No se pudo enviar la invitación. Intente de nuevo más tarde.");
+                case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
+                        "La contraseña no alcanza la longitud mínima configurada.")));
+            };
         }
         if (failure instanceof AccessDeniedException) {
             return Problem.forStatus(HttpStatus.FORBIDDEN);

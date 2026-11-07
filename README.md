@@ -10,6 +10,8 @@ El inicio y cierre de sesión usan una cookie del servidor y protección CSRF. E
 
 La sesión permite listar empresas propias y consultar el contexto mínimo de una empresa autorizada. [Membresías y permisos](docs/PERMISOS-EMPRESA.md).
 
+HU-009 incorpora invitaciones de un solo uso por correo SMTP. La función requiere habilitación, una vigencia explícita y la configuración del relay y de la página de aceptación. [Flujo de invitaciones](docs/INVITACIONES.md).
+
 ## Construcción y pruebas
 
 Requisitos: JDK 17 completo, Docker con contenedores Linux y acceso a Maven Central y Docker Hub para la primera descarga. No hace falta instalar Maven o PostgreSQL: el wrapper fija Maven 3.10.0 y Testcontainers inicia PostgreSQL `17.11-alpine` temporalmente.
