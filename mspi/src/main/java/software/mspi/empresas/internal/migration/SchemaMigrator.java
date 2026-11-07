@@ -9,15 +9,14 @@ import org.flywaydb.core.Flyway;
 /** Invoked by the technical process, not registered as a Spring application bean. */
 public final class SchemaMigrator {
 
+    public static final String TENANT_STRUCTURE_VERSION = "1";
+
     private static final Pattern URL_CREDENTIAL = Pattern.compile(
             "[?&](user|password|sslpassword)=|^jdbc:postgresql://[^/]*@", Pattern.CASE_INSENSITIVE);
 
     public Flyway prepare(MigrationScope scope, String jdbcUrl, String username, String password) {
         Objects.requireNonNull(scope, "scope");
-        if (jdbcUrl == null || !jdbcUrl.startsWith("jdbc:postgresql:")
-                || URL_CREDENTIAL.matcher(jdbcUrl).find()) {
-            throw new IllegalArgumentException("Se requiere una URL PostgreSQL sin credenciales incorporadas.");
-        }
+        requirePostgresUrl(jdbcUrl);
         if (!scope.migrationRole().equals(username) || password == null || password.isEmpty()) {
             throw new IllegalArgumentException("Se requieren credenciales de migración del ámbito seleccionado.");
         }
@@ -40,5 +39,12 @@ public final class SchemaMigrator {
                 .validateMigrationNaming(true)
                 .validateOnMigrate(true)
                 .load();
+    }
+
+    static void requirePostgresUrl(String jdbcUrl) {
+        if (jdbcUrl == null || !jdbcUrl.startsWith("jdbc:postgresql:")
+                || URL_CREDENTIAL.matcher(jdbcUrl).find()) {
+            throw new IllegalArgumentException("Se requiere una URL PostgreSQL sin credenciales incorporadas.");
+        }
     }
 }

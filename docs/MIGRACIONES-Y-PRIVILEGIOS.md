@@ -2,6 +2,8 @@
 
 HU-003 concreta el mínimo técnico de DMP-01/02/04/07 y ARQ-13, según los documentos centrales 07/08 y APR-08, revisión 964249c. Estas elecciones de implementación son revisables en el PR; no amplían el alcance funcional ni resuelven políticas pendientes.
 
+Para preparar o recuperar una reserva con seguimiento de intentos y verificación de versión, usar el [procedimiento de HU-005](RECUPERACION-PREPARACION.md). La secuencia manual de esta página describe las operaciones básicas introducidas en HU-003.
+
 ## Modelo físico mínimo
 
 | Ámbito | Estructura versionada | Finalidad |
@@ -34,7 +36,7 @@ Los grants sobre futuras tablas operativas se incorporan con sus migraciones. No
 
 search_path se fija por rol y base para facilitar resolución. La barrera no depende de él: las pruebas utilizan nombres completamente calificados y PostgreSQL rechaza accesos cruzados.
 
-El bootstrap exige una base dedicada y un operador autorizado para crear/asignar roles y esquemas y administrar grants. Testcontainers usa su administrador solo para preparar fixtures; no se propone superusuario como conexión de aplicación. Los roles son globales al clúster: nombres por entorno y permisos exactos del operador se revisarán antes de despliegue. Los scripts fallan ante roles ya existentes; no se apropian de ellos ni los eliminan.
+El bootstrap exige una base dedicada y un operador autorizado para crear y asignar roles y esquemas y administrar grants. Testcontainers usa su administrador para preparar fixtures. Los roles son globales al clúster. Los nombres por entorno y los permisos exactos del operador se revisarán antes del despliegue. El bootstrap común exige roles nuevos. El empresarial de HU-005 reutiliza recursos completos verificados y rechaza colisiones o conjuntos parciales.
 
 ## Aprovisionamiento inicial y ejecución
 

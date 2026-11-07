@@ -31,6 +31,13 @@ final class TestDatabase {
     }
 
     Tenant reserveAndProvisionTenant() throws Exception {
+        var tenant = reserveTenant();
+        provision("tenant", "-v", "empresa_id=" + tenant.scope().companyId());
+        setTenantPasswords(tenant);
+        return tenant;
+    }
+
+    Tenant reserveTenant() throws SQLException {
         var scope = MigrationScope.tenant(UUID.randomUUID());
         try (var connection = admin();
                 var statement = connection.prepareStatement(
@@ -41,11 +48,12 @@ final class TestDatabase {
             statement.setString(4, scope.schema());
             statement.executeUpdate();
         }
-        provision("tenant", "-v", "empresa_id=" + scope.companyId());
-        var tenant = new Tenant(scope, UUID.randomUUID().toString(), UUID.randomUUID().toString());
-        setPassword(scope.migrationRole(), tenant.migrationPassword());
-        setPassword(scope.runtimeRole(), tenant.runtimePassword());
-        return tenant;
+        return new Tenant(scope, UUID.randomUUID().toString(), UUID.randomUUID().toString());
+    }
+
+    void setTenantPasswords(Tenant tenant) throws SQLException {
+        setPassword(tenant.scope().migrationRole(), tenant.migrationPassword());
+        setPassword(tenant.scope().runtimeRole(), tenant.runtimePassword());
     }
 
     org.flywaydb.core.Flyway tenantFlyway(Tenant tenant) {
@@ -56,6 +64,10 @@ final class TestDatabase {
     void provision(String script, String... variables) throws Exception {
         String path = "/tmp/mspi-" + script + ".sql";
         postgres.copyFileToContainer(MountableFile.forClasspathResource("db/provisioning/" + script + ".sql"), path);
+        if ("tenant".equals(script)) {
+            postgres.copyFileToContainer(MountableFile.forClasspathResource("db/provisioning/tenant-bootstrap.sql"),
+                    "/tmp/tenant-bootstrap.sql");
+        }
         var command = new java.util.ArrayList<String>();
         command.addAll(java.util.List.of("psql", "-U", postgres.getUsername(), "-d", postgres.getDatabaseName()));
         command.addAll(java.util.List.of(variables));
@@ -90,6 +102,11 @@ final class TestDatabase {
 
     Connection admin() throws SQLException {
         return connect(postgres.getUsername(), postgres.getPassword());
+    }
+
+    java.util.Map<String, String> preparationEnvironment() {
+        return java.util.Map.of("MSPI_MIGRATION_JDBC_URL", url(),
+                "MSPI_PREPARATION_USER", postgres.getUsername(), "MSPI_PREPARATION_PASSWORD", postgres.getPassword());
     }
 
     Connection runtime() throws SQLException {

@@ -61,6 +61,8 @@ El registro común y cada esquema empresarial tienen migraciones e historial Fly
 
 Preparación, permisos, comando técnico y límites de esta entrega: [Migraciones y privilegios](docs/MIGRACIONES-Y-PRIVILEGIOS.md). Criterios y evidencia: [HU-003](docs/hu/HU-003.md). Migrar no activa empresas ni completa el flujo de alta.
 
+HU-005 incorpora el comando técnico `prepare <uuid>` para registrar intentos, verificar la estructura y reintentar sobre la reserva existente. La versión se publica tras la verificación y la empresa permanece en preparación. [Procedimiento de recuperación](docs/RECUPERACION-PREPARACION.md) y [ficha HU-005](docs/hu/HU-005.md).
+
 ## Persistencia empresarial
 
 La persistencia común y la empresarial usan unidades JPA distintas. Cada unidad de trabajo empresarial fija actor y empresa durante la transacción, con el runtime exclusivo de esa empresa y pools acotados. Se deshabilitan las cachés compartidas de entidades y consultas.
