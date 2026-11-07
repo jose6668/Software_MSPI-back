@@ -15,6 +15,8 @@ public enum CompanyPermission {
     EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15
+    CHANGE_ASSET_STATE(AE, GS),   // PER-17
+    READ_ASSET_HISTORY(AE),       // PER-38
     READ_ACTIONS(AE, GS, AU),     // PER-29, general access. Assigned RA views are separate.
     REVIEW_ACTION(AE, GS);       // PER-33, subject to the independent reviewer rule.
 

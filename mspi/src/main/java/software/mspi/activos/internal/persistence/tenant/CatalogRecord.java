@@ -30,11 +30,15 @@ abstract class CatalogRecord {
     }
 
     void requireEditable(long expected) {
-        if (revision != expected) {
-            throw new OptimisticLockingFailureException("Revisión desactualizada.");
-        }
+        requireRevision(expected);
         if (state != State.ACTIVO) {
             throw new CatalogFailure(CatalogFailure.Reason.ARCHIVED);
+        }
+    }
+
+    void requireRevision(long expected) {
+        if (revision != expected) {
+            throw new OptimisticLockingFailureException("Revisión desactualizada.");
         }
     }
 }

@@ -2,7 +2,7 @@ package software.mspi.activos.api;
 
 public final class CatalogFailure extends RuntimeException {
 
-    public enum Reason { MISSING, REFERENCE, ARCHIVED }
+    public enum Reason { MISSING, REFERENCE, ARCHIVED, DUPLICATE_CODE, INCOMPATIBLE_STATE }
 
     private final Reason reason;
 
