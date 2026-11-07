@@ -47,6 +47,8 @@ management:
 mspi:
   invitations:
     enabled: false
+  recovery:
+    enabled: false
   identity:
     session-lifetime: 8h
     attempt-window: 1m

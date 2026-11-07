@@ -28,6 +28,7 @@ import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
 import software.mspi.identidad.api.LoginLimitException;
+import software.mspi.identidad.api.RecoveryFailure;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -120,6 +121,14 @@ final class ApiErrors {
         }
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof RecoveryFailure recovery) {
+            return switch (recovery.reason()) {
+                case UNAVAILABLE -> new Problem(HttpStatus.CONFLICT, "RECUPERACION_NO_DISPONIBLE",
+                        "El comprobante de recuperación no está disponible.");
+                case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
+                        "La contraseña no alcanza la longitud mínima configurada.")));
+            };
         }
         if (failure instanceof InvitationFailure invitation) {
             return switch (invitation.reason()) {

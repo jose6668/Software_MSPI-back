@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.5.0'
+  version: '1.6.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -124,6 +124,50 @@ paths:
         '403':
           $ref: '#/components/responses/Problem'
         '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/identidad/recuperacion:
+    post:
+      operationId: solicitarRecuperacion
+      summary: Solicita recuperación de acceso con el correo registrado
+      security:
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryRequest'
+      responses:
+        '202':
+          description: Solicitud admitida sin indicar si existe la cuenta o si se envió un correo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/identidad/recuperacion/confirmar:
+    post:
+      operationId: confirmarRecuperacion
+      summary: Restablece la contraseña con un comprobante de un solo uso
+      security:
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryConfirmation'
+      responses:
+        '204':
+          description: Credencial restablecida y sesiones anteriores invalidadas
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        default:
           $ref: '#/components/responses/Problem'
   /api/v1/mis-empresas:
     get:
@@ -685,6 +729,19 @@ components:
               revisionEsperada: {type: integer, format: int64, minimum: 1}
               motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    RecoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [correo]
+      properties:
+        correo: {type: string, format: email, maxLength: 254}
+    RecoveryConfirmation:
+      type: object
+      additionalProperties: false
+      required: [token, contrasena]
+      properties:
+        token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$', writeOnly: true}
+        contrasena: {type: string, minLength: 1, maxLength: 1024, format: password, writeOnly: true}
     CompanyConfiguration:
       type: object
       additionalProperties: false

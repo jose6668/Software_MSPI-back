@@ -1,8 +1,5 @@
 package software.mspi.gestion.internal.web;
 
-import java.time.Clock;
-
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.endpoint.web.WebServerNamespace;
 import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
@@ -17,6 +14,7 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import software.mspi.identidad.api.ActiveSession;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
@@ -39,7 +37,7 @@ class ApiSecurityConfiguration {
     @Order(1)
     SecurityFilterChain apiSecurity(HttpSecurity http, ApiErrors errors,
                                     HttpSessionSecurityContextRepository contexts,
-                                    HttpSessionCsrfTokenRepository csrf, ObjectProvider<Clock> clocks) throws Exception {
+                                    HttpSessionCsrfTokenRepository csrf, ActiveSession sessions) throws Exception {
         return http
                 .securityMatcher("/api/v1", "/api/v1/**")
                 .authorizeHttpRequests(auth -> auth
@@ -47,6 +45,8 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.HEAD, "/api/v1").permitAll()
                         .requestMatchers(HttpMethod.GET, ApiSessionController.CSRF).permitAll()
                         .requestMatchers(HttpMethod.POST, ApiSessionController.SESSION).permitAll()
+                        .requestMatchers(HttpMethod.POST, ApiRecoveryController.REQUEST, ApiRecoveryController.CONFIRM)
+                        .permitAll()
                         .requestMatchers(HttpMethod.POST, ApiInvitationController.ENROLL).permitAll()
                         .requestMatchers(HttpMethod.POST, ApiInvitationController.ISSUE, ApiInvitationController.REVOKE,
                                 ApiInvitationController.ACCEPT).authenticated()
@@ -62,7 +62,7 @@ class ApiSecurityConfiguration {
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
                 .securityContext(config -> config.securityContextRepository(contexts))
-                .addFilterAfter(new SessionExpiryFilter(clocks.getIfAvailable(Clock::systemUTC)),
+                .addFilterAfter(new SessionExpiryFilter(sessions, errors),
                         SecurityContextHolderFilter.class)
                 .csrf(config -> config.csrfTokenRepository(csrf))
                 .logout(config -> config.disable())

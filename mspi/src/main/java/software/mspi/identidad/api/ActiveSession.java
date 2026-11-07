@@ -5,4 +5,6 @@ import java.util.UUID;
 /** Resolves the current server identity and checks that its account remains enabled. */
 public interface ActiveSession {
     UUID requireActiveUser();
+
+    boolean isCurrent(SessionIdentity identity);
 }

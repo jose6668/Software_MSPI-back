@@ -154,7 +154,7 @@ La escritura de auditoría, revisión esperada, autorización y pruebas de aisla
 | Recuperación concreta de migraciones y preparación | HU-005 y alta real HU-010 |
 | Biblioteca o mecanismo OpenAPI compatible y formato de errores | HU-006 |
 | Identidad local/proveedor, credenciales, sesiones, intentos y cookies por entorno | HU-007 |
-| Correo automático elegido para invitaciones. Vigencia, remitente, proveedor y página de aceptación se configuran antes de operar. Canal y duración de recuperación pendientes | HU-009/010/012 |
+| Correo automático para invitaciones y enlace al correo verificado para recuperar acceso. Vigencia, límites de recuperación, remitente, relay y URLs requieren configuración de entorno | HU-009/010/012 |
 | Rúbricas, catálogo validado, N en cláusulas, evidencia y vigencia por criterio | HU-016 a HU-022 según comportamiento |
 | Contexto mínimo RA, criterios de entrega y evidencia exigida | HU-023/024 |
 | Almacenamiento privado, formatos, límite exacto, cuotas y corrección/retención | HU-025 y preparación operativa aplicable |
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-010 quedaron integradas mediante PR #1 a #10. **HU-011** cubre la configuración básica y la administración de membresías. La recuperación de acceso corresponde a HU-012 y depende de sus políticas y canal. [Ficha de HU-011](hu/HU-011.md).
+HU-001 a HU-011 quedaron integradas mediante PR #1 a #11. **HU-012** cubre la recuperación de acceso por enlace al correo verificado. [Ficha de HU-012](hu/HU-012.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.
