@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.0.0'
+  version: '1.1.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -43,7 +43,103 @@ paths:
           headers:
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
+  /api/v1/identidad/csrf:
+    get:
+      operationId: consultarCsrf
+      summary: Obtiene un token CSRF vinculado a la sesión del navegador
+      responses:
+        '200':
+          description: Token CSRF. Si aún no hay sesión, el servidor envía MSPISESSION.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfView'
+        '406':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/identidad/sesion:
+    post:
+      operationId: iniciarSesion
+      summary: Autentica una cuenta local y rota la sesión del navegador
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+      responses:
+        '200':
+          $ref: '#/components/responses/CurrentSession'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '406':
+          $ref: '#/components/responses/Problem'
+        '415':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+    get:
+      operationId: consultarSesion
+      summary: Consulta la identidad de la sesión vigente
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/CurrentSession'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '406':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: cerrarSesion
+      summary: Invalida la sesión vigente en el servidor
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204':
+          description: Sesión invalidada. El servidor expira la cookie MSPISESSION.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: MSPISESSION
+      description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
+  parameters:
+    CsrfHeader:
+      in: header
+      name: X-CSRF-TOKEN
+      required: true
+      description: Token obtenido con GET /api/v1/identidad/csrf para esta sesión.
+      schema:
+        type: string
   headers:
     CorrelationId:
       description: UUID generado por el servidor para esta solicitud
@@ -52,6 +148,15 @@ components:
         type: string
         format: uuid
   responses:
+    CurrentSession:
+      description: Identidad y vencimiento absoluto de la sesión vigente
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionView'
     Problem:
       description: Error HTTP con código estable y correlación
       headers:
@@ -62,6 +167,44 @@ components:
           schema:
             $ref: '#/components/schemas/ApiProblem'
   schemas:
+    CsrfView:
+      type: object
+      additionalProperties: false
+      required: [headerName, token]
+      properties:
+        headerName:
+          type: string
+          const: X-CSRF-TOKEN
+        token:
+          type: string
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required: [correo, contrasena]
+      properties:
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+        contrasena:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 1024
+    SessionView:
+      type: object
+      additionalProperties: false
+      required: [usuarioId, nombreVisible, expiraEn]
+      properties:
+        usuarioId:
+          type: string
+          format: uuid
+        nombreVisible:
+          type: string
+        expiraEn:
+          type: string
+          format: date-time
     ApiVersion:
       type: object
       additionalProperties: false

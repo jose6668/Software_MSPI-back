@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
+import software.mspi.identidad.api.LoginLimitException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -105,6 +107,12 @@ final class ApiErrors {
         if (failure instanceof OptimisticLockingFailureException) {
             return new Problem(HttpStatus.CONFLICT, "REVISION_DESACTUALIZADA",
                     "Consulte la revisión vigente antes de reintentar.");
+        }
+        if (failure instanceof BadCredentialsException) {
+            return new Problem(HttpStatus.UNAUTHORIZED, "CREDENCIALES_INVALIDAS", "Credenciales inválidas.");
+        }
+        if (failure instanceof LoginLimitException) {
+            return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente iniciar sesión más tarde.");
         }
         if (failure instanceof AccessDeniedException) {
             return Problem.forStatus(HttpStatus.FORBIDDEN);
