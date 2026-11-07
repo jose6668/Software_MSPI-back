@@ -1,6 +1,7 @@
 package software.mspi.empresas.internal.migration;
 
 import java.io.PrintStream;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -21,12 +22,15 @@ public final class MigrationCli {
     public static int run(String[] args, Map<String, String> environment, PrintStream output, PrintStream error) {
         try {
             MigrationScope scope;
-            if (args.length == 1 && "common".equals(args[0])) {
+            if (args.length == 2 && "prepare".equals(args[0])) {
+                return new TenantPreparation().run(MigrationScope.tenant(UUID.fromString(args[1])),
+                        environment, output, error);
+            } else if (args.length == 1 && "common".equals(args[0])) {
                 scope = MigrationScope.common();
             } else if (args.length == 2 && "tenant".equals(args[0])) {
                 scope = MigrationScope.tenant(UUID.fromString(args[1]));
             } else {
-                error.println("Uso: common | tenant <empresa-uuid>");
+                error.println("Uso: common | tenant <empresa-uuid> | prepare <empresa-uuid>");
                 return 2;
             }
 
@@ -34,12 +38,21 @@ public final class MigrationCli {
                     environment.get("MSPI_MIGRATION_JDBC_URL"),
                     environment.get("MSPI_MIGRATION_USER"),
                     environment.get("MSPI_MIGRATION_PASSWORD"));
-            var result = flyway.migrate();
-            output.printf("Ámbito %s: %d migraciones aplicadas.%n", scope.schema(), result.migrationsExecuted);
+            if (scope.isCommon()) {
+                output.printf("Ámbito %s: %d migraciones aplicadas.%n", scope.schema(), flyway.migrate().migrationsExecuted);
+            } else {
+                try (var session = flyway.getConfiguration().getDataSource().getConnection()) {
+                    if (!TenantMigrationLock.acquire(session)) {
+                        error.println("Ya hay una preparación o migración empresarial en curso.");
+                        return 1;
+                    }
+                    output.printf("Ámbito %s: %d migraciones aplicadas.%n", scope.schema(), flyway.migrate().migrationsExecuted);
+                }
+            }
             return 0;
-        } catch (IllegalArgumentException | FlywayException exception) {
+        } catch (IllegalArgumentException | FlywayException | SQLException exception) {
             // Do not echo environment values, SQL statements or connection details.
-            error.println("No se pudo migrar. Verifique el ámbito, las credenciales técnicas y la preparación del esquema.");
+            error.println("No se pudo completar el comando. Verifique el ámbito, las credenciales técnicas y la preparación del esquema.");
             return 1;
         }
     }

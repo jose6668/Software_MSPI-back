@@ -7,6 +7,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import software.mspi.empresas.api.*;
 import software.mspi.empresas.internal.migration.MigrationScope;
+import software.mspi.empresas.internal.migration.SchemaMigrator;
 import software.mspi.empresas.internal.persistence.common.CompanyRegistryRepository;
 
 final class ScopedTenantUnitOfWork implements TenantUnitOfWork {
@@ -37,7 +38,8 @@ final class ScopedTenantUnitOfWork implements TenantUnitOfWork {
         policy.requireAccess(actor, company);
         var entry = registry.findById(company)
                 .orElseThrow(() -> new AccessDeniedException("Empresa no operable."));
-        if (!"ACTIVA".equals(entry.getState()) || !"1".equals(entry.getStructureVersion())
+        if (!"ACTIVA".equals(entry.getState())
+                || !SchemaMigrator.TENANT_STRUCTURE_VERSION.equals(entry.getStructureVersion())
                 || !MigrationScope.tenant(company).schema().equals(entry.getSchemaName())) {
             throw new AccessDeniedException("Empresa no operable.");
         }
