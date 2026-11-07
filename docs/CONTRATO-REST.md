@@ -1,6 +1,6 @@
 # Contrato REST de MSPI v1
 
-El contrato OpenAPI 3.1 se versiona junto al código y se incluye en el JAR como recurso. El único recurso de esta entrega consulta la versión del contrato mediante `GET /api/v1` y `HEAD /api/v1`. La respuesta GET es JSON con `{"version":"v1"}`. Ambas consultas son públicas. [OpenAPI de MSPI](../mspi/src/main/resources/openapi/v1.yaml).
+El contrato OpenAPI 3.1 se versiona junto al código y se incluye en el JAR como recurso. Las consultas públicas `GET /api/v1` y `HEAD /api/v1` informan la versión del contrato. El GET devuelve `{"version":"v1"}`. HU-007 añade el contrato de identidad y CSRF. [OpenAPI de MSPI](../mspi/src/main/resources/openapi/v1.yaml).
 
 Mantener el archivo OpenAPI en el mismo PR que agregue o cambie una operación. Documentar entrada y salida, campos obligatorios y anulables, formatos, estados, unidades, permisos y errores aplicables. La especificación se mantiene de forma explícita con OpenAPI 3.1 y se contrasta con las respuestas HTTP en CI. [Especificación OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0).
 
@@ -19,16 +19,17 @@ Los errores de Spring MVC y los rechazos de autenticación, autorización o CSRF
 | Estado | Código |
 | --- | --- |
 | 400 | `VALIDACION`, `JSON_INVALIDO`, `CAMPO_NO_PERMITIDO` o `SOLICITUD_INVALIDA` |
-| 401 | `NO_AUTENTICADO` |
+| 401 | `NO_AUTENTICADO` o `CREDENCIALES_INVALIDAS` |
 | 403 | `ACCESO_DENEGADO` o `CSRF_INVALIDO` |
 | 404 | `NO_ENCONTRADO` |
 | 405 | `METODO_NO_PERMITIDO` |
 | 406 | `RESPUESTA_NO_ACEPTABLE` |
 | 409 | `REVISION_DESACTUALIZADA` o `CONFLICTO` |
 | 415 | `TIPO_CONTENIDO_NO_ADMITIDO` |
+| 429 | `DEMASIADOS_INTENTOS` |
 | Otros 4xx | `SOLICITUD_RECHAZADA` |
 | 5xx | `ERROR_INTERNO` |
 
 El servidor genera un UUID por solicitud API, lo devuelve en `X-Correlation-Id` y lo añade como `correlationId` e `instance` a los errores. `instance` es una URN, lo que permite identificar la incidencia sin publicar la URL original. El UUID también está disponible en el contexto de logs durante la solicitud. El cliente puede comunicar ese UUID al reportar un error. Los mensajes están definidos por el backend y la respuesta solo incluye nombres de campos o parámetros conocidos.
 
-El manejo aplica después de que la solicitud llega a la capa HTTP de la aplicación. Un proxy o el contenedor pueden rechazar solicitudes antes de ese punto. Spring Security mantiene CSRF y deja cerradas las rutas empresariales. Las demás rutas de API requieren autenticación. HU-007 integra el acceso de sesión de MSPI y HU-008 la autorización empresarial. La cadena de seguridad fuera de la API conserva las reglas de arranque de Spring Boot.
+El manejo aplica después de que la solicitud llega a la capa HTTP de la aplicación. Un proxy o el contenedor pueden rechazar solicitudes antes de ese punto. Spring Security mantiene CSRF y deja cerradas las rutas empresariales. El inicio, la consulta y el cierre se integran mediante las rutas de identidad. HU-008 incorpora la autorización por empresa. Fuera de la API se conservan las comprobaciones de salud. [Flujo de sesión](SESION.md).

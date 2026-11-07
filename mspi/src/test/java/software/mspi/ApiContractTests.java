@@ -47,7 +47,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
@@ -105,12 +104,12 @@ class ApiContractTests {
     }
 
     @Test
-    void leavesExistingHealthAndNonApiSecurityOutsideTheContract() throws Exception {
+    void leavesHealthAvailableAndClosesDefaultLoginOutsideTheApi() throws Exception {
         mvc.perform(get("/actuator/health")).andExpect(status().isOk()).andExpect(header().doesNotExist(CORRELATION));
         mvc.perform(get("/livez")).andExpect(status().isOk()).andExpect(header().doesNotExist(CORRELATION));
-        mvc.perform(get("/fuera").accept(MediaType.TEXT_HTML))
-                .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/login"))
+        mvc.perform(get("/login").accept(MediaType.TEXT_HTML))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Location"))
                 .andExpect(header().doesNotExist(CORRELATION));
     }
 
