@@ -5,7 +5,7 @@ HU-005 implementa el flujo técnico inicial de DMP-07, TR-EMP-03/04, AIS-17/18 y
 ## Ejecutar en un entorno de prueba
 
 1. Aprovisionar la base dedicada y ejecutar `MigrationCli common` con el migrador común. La migración común V2 crea `comun.intentos_preparacion` y conserva las reservas existentes.
-2. Con la identidad técnica autorizada, ejecutar `MigrationCli prepare <empresa-uuid>` para una reserva `EN_PREPARACION` o `ERROR_APROVISIONAMIENTO`. La URL y credenciales se suministran externamente.
+2. Con la identidad técnica autorizada, ejecutar `MigrationCli prepare <empresa-uuid>` para una reserva `EN_PREPARACION` o `ERROR_APROVISIONAMIENTO`. Para una reserva nueva, suministrar primero la URL y las credenciales del operador. Si los roles ya tienen contraseñas, se pueden suministrar todas las credenciales desde el primer intento.
 3. Si devuelve 3, el esquema y los roles están preparados. Asignar contraseñas a ambos roles por el canal protegido del operador (por ejemplo, el comando interactivo `\password` de psql). Suministrar las credenciales indicadas abajo y repetir con el mismo UUID.
 4. Cuando devuelve 0, comprobar en el registro técnico que el intento terminó `VERIFICADO`. La empresa queda `EN_PREPARACION` con su versión estructural verificada.
 
