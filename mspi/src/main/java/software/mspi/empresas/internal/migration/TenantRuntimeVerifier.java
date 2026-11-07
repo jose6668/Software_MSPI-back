@@ -61,25 +61,29 @@ public final class TenantRuntimeVerifier {
                 SELECT count(*) FROM pg_catalog.pg_class c
                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 WHERE n.nspname = ? AND c.relkind = 'r' AND pg_get_userbyid(c.relowner) = ?
-                  AND NOT has_table_privilege(c.oid, 'DELETE,TRUNCATE,TRIGGER,REFERENCES')
+                  AND NOT has_table_privilege(c.oid, 'TRUNCATE,TRIGGER,REFERENCES')
                   AND has_table_privilege(c.oid, 'INSERT')
                   AND (
-                    (c.relname IN ('procesos', 'responsables_negocio') AND has_table_privilege(c.oid, 'SELECT')
+                    (c.relname IN ('procesos', 'responsables_negocio', 'valoraciones_activo')
+                     AND has_table_privilege(c.oid, 'SELECT') AND NOT has_table_privilege(c.oid, 'DELETE')
                      AND has_table_privilege(c.oid, 'UPDATE'))
-                    OR (c.relname = 'activos' AND has_table_privilege(c.oid, 'SELECT') AND NOT EXISTS (
+                    OR (c.relname = 'activos' AND has_table_privilege(c.oid, 'SELECT')
+                        AND NOT has_table_privilege(c.oid, 'DELETE') AND NOT EXISTS (
                         SELECT 1 FROM pg_catalog.pg_attribute a
                         WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
                           AND has_column_privilege(c.oid, a.attnum, 'UPDATE') <>
                               (a.attname NOT IN ('id', 'empresa_id', 'codigo', 'codigo_normalizado'))
                     ))
-                    OR (c.relname = 'eventos_actividad'
+                    OR (c.relname = 'eventos_actividad' AND NOT has_table_privilege(c.oid, 'DELETE')
                         AND NOT has_any_column_privilege(c.oid, 'SELECT,UPDATE,REFERENCES'))
+                    OR (c.relname = 'valoracion_tipos_dato' AND has_table_privilege(c.oid, 'SELECT')
+                        AND has_table_privilege(c.oid, 'DELETE') AND NOT has_any_column_privilege(c.oid, 'UPDATE'))
                   )
                 """)) {
             statement.setString(1, scope.schema());
             statement.setString(2, scope.migrationRole());
             try (var rows = statement.executeQuery()) {
-                if (!rows.next() || rows.getInt(1) != 4) {
+                if (!rows.next() || rows.getInt(1) != 6) {
                     throw new IllegalStateException("Permisos del catálogo empresarial incompatibles.");
                 }
             }
