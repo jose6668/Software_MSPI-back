@@ -9,6 +9,10 @@ server:
         secure: true
         same-site: lax
 spring:
+  servlet:
+    multipart:
+      max-file-size: 10000000B
+      max-request-size: 10016384B
   mail:
     properties:
       "[mail.smtp.connectiontimeout]": 5000
@@ -40,11 +44,16 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+logging:
+  level:
+    org.apache.pdfbox: OFF
 management:
   health:
     mail:
       enabled: false
 mspi:
+  evidence:
+    enabled: false
   invitations:
     enabled: false
   recovery:

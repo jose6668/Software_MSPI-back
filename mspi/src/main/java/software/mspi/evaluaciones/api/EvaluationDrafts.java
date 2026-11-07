@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 public interface EvaluationDrafts {
 
@@ -17,6 +19,12 @@ public interface EvaluationDrafts {
     Page<Finding> findings(Scope scope, UUID evaluation, UUID response, int page, int size);
     Finding createFinding(Scope scope, UUID evaluation, UUID response, long revision, Gap input);
     Finding updateFinding(Scope scope, UUID evaluation, UUID response, UUID finding, long revision, Gap input);
+
+    void requireReadableResponse(Scope scope, UUID evaluation, UUID response);
+
+    /** Locks and checks the draft before publication. An empty result leaves the evaluation revision unchanged. */
+    <T> Optional<T> attachEvidence(Scope scope, UUID evaluation, UUID response, long revision,
+                                  Supplier<Optional<T>> publish);
 
     enum ElementType { CONTROL, CLAUSULA }
     enum Applicability { SIN_DECIDIR, APLICA, NO_APLICA }

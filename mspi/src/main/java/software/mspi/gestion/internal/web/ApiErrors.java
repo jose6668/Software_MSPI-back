@@ -23,6 +23,9 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.activos.api.CatalogFailure;
 import software.mspi.activos.api.ClassificationFailure;
@@ -31,6 +34,7 @@ import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
 import software.mspi.evaluaciones.api.EvaluationFailure;
+import software.mspi.evidencias.api.EvidenceFailure;
 import software.mspi.identidad.api.LoginLimitException;
 import software.mspi.identidad.api.RecoveryFailure;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
@@ -107,6 +111,15 @@ final class ApiErrors {
         if (failure instanceof MissingRequestHeaderException missing) {
             return validation(List.of(new Field(missing.getHeaderName(), "REQUERIDO", "Indique la cabecera.")));
         }
+        if (failure instanceof MissingServletRequestPartException missing) {
+            return validation(List.of(new Field(missing.getRequestPartName(), "REQUERIDO", "Indique la parte del formulario.")));
+        }
+        if (failure instanceof MaxUploadSizeExceededException) {
+            return oversizedEvidence();
+        }
+        if (failure instanceof MultipartException) {
+            return Problem.forStatus(HttpStatus.BAD_REQUEST);
+        }
         if (failure instanceof MethodArgumentTypeMismatchException mismatch) {
             return validation(List.of(invalidField(mismatch.getName())));
         }
@@ -136,6 +149,19 @@ final class ApiErrors {
                 case VERSION -> new Problem(HttpStatus.CONFLICT, "VERSION_NO_DISPONIBLE",
                         "Seleccione versiones publicadas, compatibles y disponibles para nuevos usos.");
                 case INVALID_ANSWER -> validation(evaluation.fields().stream().map(ApiErrors::invalidField).toList());
+            };
+        }
+        if (failure instanceof EvidenceFailure evidence) {
+            return switch (evidence.reason()) {
+                case INVALID_FILE -> validation(List.of(invalidField("archivo")));
+                case TOO_LARGE -> oversizedEvidence();
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case QUOTA -> new Problem(HttpStatus.CONFLICT, "CUOTA_EVIDENCIAS_AGOTADA",
+                        "La empresa no dispone de cuota para este archivo.");
+                case QUOTA_NOT_CONFIGURED -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "CUOTA_EVIDENCIAS_NO_CONFIGURADA",
+                        "La empresa requiere una cuota de evidencias configurada.");
+                case STORAGE -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ALMACENAMIENTO_EVIDENCIAS_NO_DISPONIBLE",
+                        "No se pudo completar la operación con el archivo.");
             };
         }
         if (failure instanceof ReferenceNotFound) {
@@ -230,6 +256,10 @@ final class ApiErrors {
 
     private static Problem validation(List<Field> fields) {
         return new Problem(HttpStatus.BAD_REQUEST, "VALIDACION", "Revise los campos indicados.", fields);
+    }
+
+    private static Problem oversizedEvidence() {
+        return new Problem(HttpStatus.CONTENT_TOO_LARGE, "CARGA_DEMASIADO_GRANDE", "La carga supera el límite permitido.");
     }
 
     private static Field invalidField(String name) {

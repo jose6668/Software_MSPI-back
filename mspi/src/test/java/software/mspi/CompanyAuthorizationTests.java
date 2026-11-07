@@ -1,5 +1,10 @@
 package software.mspi;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
@@ -9,9 +14,12 @@ import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.imageio.ImageIO;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,12 +31,16 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistrar;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
+import org.springframework.util.FileSystemUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,14 +61,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {"mspi.tenancy.enabled=true", "mspi.tenancy.max-pools=2",
         "mspi.tenancy.connections-per-pool=2", "mspi.tenancy.connection-timeout=5s", "mspi.tenancy.idle-ttl=30s",
-        "mspi.identity.attempts-per-address=60"})
+        "mspi.identity.attempts-per-address=60", "mspi.evidence.enabled=true"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import({PostgresTestConfiguration.class, CompanyAuthorizationTests.Fixtures.class,
@@ -76,6 +91,8 @@ class CompanyAuthorizationTests {
     private static final String METHODOLOGIES = "/api/v1/empresas/{empresaId}/metodologias";
     private static final String EVALUATIONS = "/api/v1/empresas/{empresaId}/evaluaciones";
     private static final String EVALUATION_RESPONSES = EVALUATIONS + "/{evaluacionId}/respuestas";
+    private static final String EVALUATION_EVIDENCE = EVALUATION_RESPONSES + "/{respuestaId}/evidencias";
+    private static final String EVIDENCE_FILE = EVALUATION_EVIDENCE + "/{evidenciaId}/archivo";
     private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
@@ -85,6 +102,7 @@ class CompanyAuthorizationTests {
     @Autowired PasswordEncoder encoder;
     @Autowired TenantIsolationFixture fixture;
     @Autowired TestDelivery delivery;
+    @Autowired EvidenceVolume evidenceVolume;
 
     @Test
     void listsOnlyOwnOperableCompaniesAndSelectsExplicitMinimalContext() throws Exception {
@@ -116,7 +134,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "5");
+            fixture.metadata(fixture.third, "ACTIVA", "6");
         }
     }
 
@@ -159,13 +177,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "5");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "6");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "5");
+            fixture.metadata(fixture.first, "ACTIVA", "6");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -398,7 +416,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '5' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '6' WHERE id = ?", company);
         return company;
     }
 
@@ -981,11 +999,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "5");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "6");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "5");
+            fixture.metadata(fixture.first, "ACTIVA", "6");
         }
     }
 
@@ -1265,6 +1283,229 @@ class CompanyAuthorizationTests {
         }
     }
 
+    @Test
+    void evidenceUsesSessionCsrfAndFullObjectScopeForPrivateDownloads() throws Exception {
+        var editor = account();
+        UUID local = member(editor, a(), "GS");
+        UUID foreign = member(editor, b(), "AE");
+        var session = login(editor);
+        var reader = account();
+        UUID readerMembership = member(reader, a(), "AU");
+        var au = login(reader);
+        var responsible = account();
+        member(responsible, a(), "RA");
+        var ra = login(responsible);
+        UUID catalog = evaluationCatalog(new EvaluationItem("A", "CONTROL", "DOM_A"),
+                new EvaluationItem("B", "CONTROL", "DOM_A"));
+        UUID evaluation = createEvaluation(a(), session, local, catalog, method(a(), session, "EVALUACION_CONTROLES"));
+        var rows = evaluationResponses(a(), evaluation, session);
+        UUID response = rows.get("A");
+        UUID foreignEvaluation = createEvaluation(b(), session, foreign, catalog, method(b(), session, "EVALUACION_CONTROLES"));
+        UUID foreignResponse = evaluationResponses(b(), foreignEvaluation, session).get("A");
+        byte[] png = image("png");
+
+        mvc.perform(evidenceUpload(a(), evaluation, response, session, 0, "soporte.png", png))
+                .andExpect(status().isForbidden());
+        mvc.perform(evidenceUpload(a(), evaluation, response, au, 0, "soporte.png", png).with(csrf().asHeader()))
+                .andExpect(status().isForbidden());
+        mvc.perform(evidenceUpload(a(), evaluation, response, session, 0, "acta técnica.PNG", png)
+                        .param("descripcion", "Acta de verificación").with(csrf().asHeader()))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.revisionEvaluacion").value(1))
+                .andExpect(jsonPath("$.evidencia.tipoDetectado").value("image/png"))
+                .andExpect(jsonPath("$.evidencia.tamanoBytes").value(png.length))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Location")).endsWith("/archivo"));
+        var listing = mvc.perform(get(EVALUATION_EVIDENCE, a(), evaluation, response).session(au))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.elementos[0].descripcion").value("Acta de verificación"))
+                .andExpect(jsonPath("$.elementos[0].nombreOriginal").value("acta técnica.PNG"))
+                .andExpect(jsonPath("$.elementos[0].claveAlmacenamiento").doesNotExist()).andReturn();
+        UUID evidence = UUID.fromString(mapper.readTree(listing.getResponse().getContentAsByteArray()).path("elementos")
+                .get(0).path("evidenciaId").asString());
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, response, evidence).session(au))
+                .andExpect(status().isOk()).andExpect(content().bytes(png))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Content-Disposition")).startsWith("attachment;"));
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, response, evidence)).andExpect(status().isUnauthorized());
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, response, evidence).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, rows.get("B"), evidence).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(EVIDENCE_FILE, b(), foreignEvaluation, foreignResponse, evidence).session(session))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(EVALUATION_EVIDENCE, b(), foreignEvaluation, foreignResponse).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos").isEmpty());
+        sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", readerMembership);
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, response, evidence).session(au)).andExpect(status().isForbidden());
+
+        String schema = fixture.first.scope().schema();
+        assertThat(count("SELECT count(*) FROM " + schema + ".eventos_actividad WHERE objeto_id = ?"
+                + " AND accion = 'CARGAR_EVIDENCIA' AND estado_nuevo = 'DISPONIBLE'", evidence)).isOne();
+        try (var tenant = fixture.database.connect(fixture.second.scope().runtimeRole(), fixture.second.runtimePassword());
+                var statement = tenant.createStatement()) {
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM " + schema + ".evidencias"), "42501");
+        }
+        try (var tenant = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = tenant.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("DELETE FROM evidencias WHERE id = '" + evidence + "'"), "42501");
+            assertSqlState(() -> statement.executeUpdate("UPDATE evidencias SET estado_carga = 'FALLIDA' WHERE id = '"
+                    + evidence + "'"), "23514");
+        }
+        sql("UPDATE " + schema + ".evaluaciones SET estado = 'EN_REVISION' WHERE id = ?", evaluation);
+        mvc.perform(evidenceUpload(a(), evaluation, response, session, 1, "nuevo.png", png).with(csrf().asHeader()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EVALUACION_NO_EDITABLE"));
+        mvc.perform(get(EVIDENCE_FILE, a(), evaluation, response, evidence).session(session))
+                .andExpect(status().isOk()).andExpect(content().bytes(png));
+    }
+
+    @Test
+    void evidenceChecksContentSizeAndRevisionAndAcceptsPdfAndJpeg() throws Exception {
+        var draft = evidenceDraft(a());
+        byte[] png = image("png");
+        var pdf = new ByteArrayOutputStream();
+        try (var document = new PDDocument()) {
+            document.addPage(new PDPage());
+            document.save(pdf);
+        }
+        mvc.perform(draft.upload(0, "imagen.png", new byte[10_000_001]).with(csrf().asHeader()))
+                .andExpect(status().isPayloadTooLarge()).andExpect(jsonPath("$.code").value("CARGA_DEMASIADO_GRANDE"));
+        mvc.perform(draft.upload(0, "falso.pdf", png).with(csrf().asHeader()))
+                .andExpect(status().isBadRequest());
+        mvc.perform(draft.upload(0, "truncado.png", java.util.Arrays.copyOf(png, 15)).with(csrf().asHeader()))
+                .andExpect(status().isBadRequest());
+        mvc.perform(draft.upload(0, "falso.pdf", "%PDF-1.7\ntexto\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                        .with(csrf().asHeader()))
+                .andExpect(status().isBadRequest());
+        mvc.perform(draft.upload(0, "../imagen.png", png).with(csrf().asHeader()))
+                .andExpect(status().isBadRequest());
+        mvc.perform(draft.upload(0, "acta.pdf", pdf.toByteArray()).with(csrf().asHeader()))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.evidencia.tipoDetectado").value("application/pdf"));
+        mvc.perform(draft.upload(0, "foto.jpeg", image("jpeg")).with(csrf().asHeader()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REVISION_DESACTUALIZADA"));
+        mvc.perform(draft.upload(1, "foto.jpeg", image("jpeg")).with(csrf().asHeader()))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.evidencia.tipoDetectado").value("image/jpeg"));
+        mvc.perform(get(EVALUATION_EVIDENCE, draft.company(), draft.evaluation(), draft.response()).session(draft.session())
+                        .param("tamano", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.hayMas").value(true));
+        var unconfigured = evidenceDraft(c());
+        mvc.perform(unconfigured.upload(0, "valido.png", png).with(csrf().asHeader()))
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("CUOTA_EVIDENCIAS_NO_CONFIGURADA"));
+    }
+
+    @Test
+    void concurrentUploadsToDifferentEvaluationsShareOneCompanyQuota() throws Exception {
+        var first = evidenceDraft(b());
+        var second = evidenceDraft(b());
+        String usage = fixture.second.scope().schema() + ".uso_evidencias";
+        long previous = count("SELECT bytes_ocupados FROM " + usage);
+        byte[] png = image("png");
+        long available = EvidenceVolume.QUOTA - png.length;
+        sql("UPDATE " + usage + " SET bytes_ocupados = ?", available);
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var firstUpload = executor.submit(() -> raceUpload(first, png, barrier));
+            var secondUpload = executor.submit(() -> raceUpload(second, png, barrier));
+            assertThat(List.of(firstUpload.get(15, TimeUnit.SECONDS), secondUpload.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(201, 409);
+            assertThat(count("SELECT bytes_ocupados FROM " + usage)).isEqualTo(EvidenceVolume.QUOTA);
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+            long newBytes = count("SELECT bytes_ocupados FROM " + usage) - available;
+            sql("UPDATE " + usage + " SET bytes_ocupados = ?", previous + newBytes);
+        }
+    }
+
+    @Test
+    void failedStorageLeavesTerminalAttemptWithoutAvailabilityOrQuotaConsumption() throws Exception {
+        var draft = evidenceDraft(a());
+        String schema = fixture.first.scope().schema();
+        long usage = count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias");
+        Path company = evidenceVolume.root.resolve(a().toString());
+        Path saved = evidenceVolume.root.resolve("obstruccion-" + a());
+        boolean existed = Files.isDirectory(company);
+        if (existed) Files.move(company, saved);
+        try {
+            Files.writeString(company, "obstruye la creación del directorio");
+            mvc.perform(draft.upload(0, "recuperable.png", image("png")).with(csrf().asHeader()))
+                    .andExpect(status().isServiceUnavailable());
+            assertThat(count("SELECT count(*) FROM " + schema + ".evidencias WHERE respuesta_id = ? AND estado_carga = 'FALLIDA'",
+                    draft.response())).isOne();
+            assertThat(count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias")).isEqualTo(usage);
+            mvc.perform(get(EVALUATION_EVIDENCE, a(), draft.evaluation(), draft.response()).session(draft.session()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.elementos").isEmpty());
+        } finally {
+            Files.deleteIfExists(company);
+            if (existed) Files.move(saved, company);
+        }
+        mvc.perform(draft.upload(0, "recuperable.png", image("png")).with(csrf().asHeader()))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void rollbackAfterWritingFileCompensatesPrivateContentAndKeepsDraftRevision() throws Exception {
+        var draft = evidenceDraft(a());
+        String schema = fixture.first.scope().schema();
+        Path company = evidenceVolume.root.resolve(a().toString());
+        long before = fileEntries(company);
+        long usage = count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias");
+        sql("ALTER TABLE " + schema + ".eventos_actividad ADD CONSTRAINT falla_publicacion"
+                + " CHECK (accion <> 'CARGAR_EVIDENCIA') NOT VALID");
+        try {
+            mvc.perform(draft.upload(0, "reintento.png", image("png")).with(csrf().asHeader()))
+                    .andExpect(status().isInternalServerError());
+            assertThat(count("SELECT count(*) FROM " + schema + ".evidencias WHERE respuesta_id = ?", draft.response()))
+                    .isZero();
+            assertThat(count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias")).isEqualTo(usage);
+            assertThat(fileEntries(company)).isEqualTo(before);
+        } finally {
+            sql("ALTER TABLE " + schema + ".eventos_actividad DROP CONSTRAINT falla_publicacion");
+        }
+        mvc.perform(draft.upload(0, "reintento.png", image("png")).with(csrf().asHeader())).andExpect(status().isCreated());
+    }
+
+    private int raceUpload(EvidenceDraft draft, byte[] png, CyclicBarrier barrier) throws Exception {
+        barrier.await(10, TimeUnit.SECONDS);
+        return mvc.perform(draft.upload(0, "cuota.png", png).with(csrf().asHeader()))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private EvidenceDraft evidenceDraft(UUID company) throws Exception {
+        var editor = account();
+        UUID membership = member(editor, company, "AE");
+        var session = login(editor);
+        UUID catalog = evaluationCatalog(new EvaluationItem("A", "CONTROL", "DOM_A"));
+        UUID evaluation = createEvaluation(company, session, membership, catalog, method(company, session, "EVALUACION_CONTROLES"));
+        return new EvidenceDraft(company, evaluation, evaluationResponses(company, evaluation, session).get("A"), session);
+    }
+
+    private static MockMultipartHttpServletRequestBuilder evidenceUpload(UUID company, UUID evaluation, UUID response,
+            MockHttpSession session, long revision, String name, byte[] data) {
+        var request = multipart(EVALUATION_EVIDENCE, company, evaluation, response)
+                .file(new MockMultipartFile("archivo", name, "application/octet-stream", data));
+        request.session(session).param("revisionEsperada", Long.toString(revision));
+        return request;
+    }
+
+    private record EvidenceDraft(UUID company, UUID evaluation, UUID response, MockHttpSession session) {
+        MockMultipartHttpServletRequestBuilder upload(long revision, String name, byte[] bytes) {
+            return evidenceUpload(company, evaluation, response, session, revision, name, bytes);
+        }
+    }
+
+    private static byte[] image(String format) throws IOException {
+        var output = new ByteArrayOutputStream();
+        assertThat(ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), format, output)).isTrue();
+        return output.toByteArray();
+    }
+
+    private static long fileEntries(Path path) throws IOException {
+        if (!Files.isDirectory(path)) return 0;
+        try (var files = Files.list(path)) {
+            return files.count();
+        }
+    }
+
     private UUID evaluationCatalog(EvaluationItem... items) throws SQLException {
         UUID catalog = UUID.randomUUID();
         UUID version = UUID.randomUUID();
@@ -1428,6 +1669,18 @@ class CompanyAuthorizationTests {
         final AtomicReference<UUID> responsible = new AtomicReference<>();
     }
 
+    static class EvidenceVolume implements AutoCloseable {
+        static final long QUOTA = 50_000;
+        final Path root = Files.createTempDirectory("mspi-evidencias-pruebas-");
+
+        EvidenceVolume() throws IOException {}
+
+        @Override
+        public void close() throws IOException {
+            FileSystemUtils.deleteRecursively(root);
+        }
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class Fixtures {
         @Bean TenantIsolationFixture probeData(TestDatabase database) throws Exception {
@@ -1435,6 +1688,14 @@ class CompanyAuthorizationTests {
         }
         @Bean @Primary TenantSecretSource probeSecrets(TenantIsolationFixture data) { return data.secrets(); }
         @Bean TestDelivery testDelivery() { return new TestDelivery(); }
+        @Bean EvidenceVolume evidenceVolume() throws IOException { return new EvidenceVolume(); }
+        @Bean DynamicPropertyRegistrar evidenceProperties(TenantIsolationFixture data, EvidenceVolume volume) {
+            return registry -> {
+                registry.add("mspi.evidence.directory", () -> volume.root.toString());
+                registry.add("mspi.evidence.quotas[" + data.first.scope().companyId() + "]", () -> EvidenceVolume.QUOTA);
+                registry.add("mspi.evidence.quotas[" + data.second.scope().companyId() + "]", () -> EvidenceVolume.QUOTA);
+            };
+        }
     }
 
     @TestComponent

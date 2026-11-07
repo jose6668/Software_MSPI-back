@@ -87,6 +87,9 @@ class ApiSecurityConfiguration {
                                 ApiEvaluationController.FINDINGS).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiEvaluationController.RESPONSE,
                                 ApiEvaluationController.FINDING).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiEvidenceController.EVIDENCE,
+                                ApiEvidenceController.CONTENT).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiEvidenceController.EVIDENCE).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
