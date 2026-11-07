@@ -1,12 +1,14 @@
 package software.mspi.evidencias.internal.persistence.tenant;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import java.util.HexFormat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +67,32 @@ final class PrivateEvidenceFiles {
     }
 
     byte[] read(EvidenceRecord metadata) throws IOException {
+        try (var stream = open(metadata)) {
+            byte[] bytes = stream.readNBytes(metadata.size + 1);
+            if (bytes.length != metadata.size || !metadata.digest.equals(EvidenceContent.sha256(bytes))) {
+                throw new IOException("El contenido privado no coincide con los metadatos.");
+            }
+            return bytes;
+        }
+    }
+
+    boolean isIntact(EvidenceRecord metadata) {
+        try (var stream = open(metadata)) {
+            var digest = EvidenceContent.newSha256();
+            byte[] buffer = new byte[8192];
+            int total = 0;
+            for (int length; (length = stream.read(buffer)) != -1;) {
+                total += length;
+                if (total > metadata.size) return false;
+                digest.update(buffer, 0, length);
+            }
+            return total == metadata.size && metadata.digest.equals(HexFormat.of().formatHex(digest.digest()));
+        } catch (IOException failure) {
+            return false;
+        }
+    }
+
+    private InputStream open(EvidenceRecord metadata) throws IOException {
         Path companyDirectory = root.resolve(metadata.company.toString());
         requireDirectory(companyDirectory);
         Path entry = companyDirectory.resolve(metadata.id.toString());
@@ -73,13 +101,7 @@ final class PrivateEvidenceFiles {
         if (!Files.isRegularFile(content, NOFOLLOW_LINKS)) {
             throw new IOException("Archivo privado no disponible.");
         }
-        try (var stream = Files.newInputStream(content, NOFOLLOW_LINKS)) {
-            byte[] bytes = stream.readNBytes(metadata.size + 1);
-            if (bytes.length != metadata.size || !metadata.digest.equals(EvidenceContent.sha256(bytes))) {
-                throw new IOException("El contenido privado no coincide con los metadatos.");
-            }
-            return bytes;
-        }
+        return Files.newInputStream(content, NOFOLLOW_LINKS);
     }
 
     private static void requireDirectory(Path directory) throws IOException {

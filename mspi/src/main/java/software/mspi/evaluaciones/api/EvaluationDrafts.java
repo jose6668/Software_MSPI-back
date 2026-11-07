@@ -38,13 +38,14 @@ public interface EvaluationDrafts {
 
     record Evaluation(UUID evaluacionId, String nombre, LocalDate fechaEvaluacion, String alcance, UUID responsableId,
                       UUID versionCatalogoId, UUID versionMetodologiaId, String estado, long revision,
-                      UUID creadaPor, Instant creadaEn, Instant actualizadaEn) {}
+                      UUID creadaPor, Instant creadaEn, Instant actualizadaEn, UUID evaluacionAnteriorId,
+                      String motivoRevision, UUID cerradaPor, Instant cerradaEn) {}
 
     record Answer(Applicability aplicabilidad, String justificacionAplicabilidad, Integer calificacion, String fundamento) {}
 
     record Response(UUID respuestaId, UUID elementoId, UUID versionCatalogoId, ElementType tipo, String codigo,
                     String titulo, String grupo, Answer respuesta, long revisionEvaluacion,
-                    UUID actualizadaPor, Instant actualizadaEn) {}
+                    UUID actualizadaPor, Instant actualizadaEn, UUID respuestaAnteriorId, boolean heredadaConfirmada) {}
 
     record Gap(String descripcionBrecha, String recomendacion) {}
 

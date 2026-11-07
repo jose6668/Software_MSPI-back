@@ -87,6 +87,11 @@ class ApiSecurityConfiguration {
                                 ApiEvaluationController.FINDINGS).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiEvaluationController.RESPONSE,
                                 ApiEvaluationController.FINDING).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiEvaluationLifecycleController.CLOSURE).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiEvaluationLifecycleController.SUBMIT,
+                                ApiEvaluationLifecycleController.RETURN, ApiEvaluationLifecycleController.CLOSE,
+                                ApiEvaluationLifecycleController.CORRECTIONS, ApiEvaluationLifecycleController.CONFIRM)
+                        .authenticated()
                         .requestMatchers(HttpMethod.GET, ApiEvidenceController.EVIDENCE,
                                 ApiEvidenceController.CONTENT).authenticated()
                         .requestMatchers(HttpMethod.POST, ApiEvidenceController.EVIDENCE).authenticated()

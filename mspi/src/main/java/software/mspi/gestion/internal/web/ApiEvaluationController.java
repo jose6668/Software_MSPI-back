@@ -128,7 +128,7 @@ class ApiEvaluationController {
                 input.revisionEsperada(), input.gap()));
     }
 
-    private static Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
+    static Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
         if (actor == null) {
             throw new AccessDeniedException("Acceso empresarial no autorizado.");
         }

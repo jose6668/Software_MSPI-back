@@ -99,17 +99,25 @@ class JpaResponseEvidence implements ResponseEvidence {
     public Download download(Target target, UUID evidence) {
         return work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
             evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
-            var record = entities.find(EvidenceRecord.class, evidence);
-            if (record == null || !target.company().equals(record.company) || !target.evaluation().equals(record.evaluation)
-                    || !target.response().equals(record.response) || !"DISPONIBLE".equals(record.state)) {
-                throw new EvidenceFailure(MISSING);
-            }
+            var record = available(target, evidence).orElseThrow(() -> new EvidenceFailure(MISSING));
             try {
                 return new Download(record.metadata(), files.read(record));
             } catch (IOException failure) {
                 throw new EvidenceFailure(STORAGE);
             }
         });
+    }
+
+    @Override
+    public Optional<String> verifiedHash(Target target, UUID evidence) {
+        return work.execute(target.actor(), target.company(), CompanyPermission.EDIT_EVALUATION_DRAFT, () ->
+                available(target, evidence).filter(files::isIntact).map(record -> record.digest));
+    }
+
+    private Optional<EvidenceRecord> available(Target target, UUID evidence) {
+        return Optional.ofNullable(entities.find(EvidenceRecord.class, evidence))
+                .filter(record -> target.company().equals(record.company) && target.evaluation().equals(record.evaluation)
+                        && target.response().equals(record.response) && "DISPONIBLE".equals(record.state));
     }
 
     private int changeUsage(UUID company, int delta, long maximumCurrentUsage) {
