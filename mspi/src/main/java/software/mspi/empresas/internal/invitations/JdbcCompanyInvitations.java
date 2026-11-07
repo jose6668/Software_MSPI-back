@@ -1,24 +1,16 @@
 package software.mspi.empresas.internal.invitations;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.mail.MailException;
-import org.springframework.mail.MailSender;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,16 +29,15 @@ class JdbcCompanyInvitations implements CompanyInvitations {
     private final JdbcClient jdbc;
     private final ActiveSession session;
     private final InvitedAccountPassword passwords;
-    private final MailSender mail;
+    private final InvitationDelivery delivery;
     private final InvitationSettings settings;
-    private final SecureRandom random = new SecureRandom();
 
     JdbcCompanyInvitations(JdbcClient jdbc, ActiveSession session, InvitedAccountPassword passwords,
-                           MailSender mail, InvitationSettings settings) {
+                           InvitationDelivery delivery, InvitationSettings settings) {
         this.jdbc = jdbc;
         this.session = session;
         this.passwords = passwords;
-        this.mail = mail;
+        this.delivery = delivery;
         this.settings = settings;
     }
 
@@ -54,25 +45,22 @@ class JdbcCompanyInvitations implements CompanyInvitations {
     @Transactional(transactionManager = "commonTransactionManager")
     public Issued issue(UUID companyId, String email, List<CompanyRole> roles) {
         UUID actor = session.requireActiveUser();
-        UUID id = UUID.randomUUID();
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        var invitation = delivery.create();
         var expires = jdbc.sql("""
                 SELECT comun.emitir_invitacion(:actor, :company, :id, :email, :key, :fingerprint,
                     CAST(:roles AS text[]), :seconds, :version)
                 """)
-                .param("actor", actor).param("company", companyId).param("id", id)
+                .param("actor", actor).param("company", companyId).param("id", invitation.id())
                 .param("email", email).param("key", EmailKey.normalize(email))
-                .param("fingerprint", fingerprint(token))
+                .param("fingerprint", invitation.digest())
                 .param("roles", roles.stream().map(CompanyRole::name).toArray(String[]::new), Types.ARRAY)
-                .param("seconds", Math.toIntExact(settings.validity().toSeconds()))
+                .param("seconds", invitation.validitySeconds())
                 .param("version", SchemaMigrator.TENANT_STRUCTURE_VERSION)
                 .query(OffsetDateTime.class).optional()
                 .orElseThrow(() -> new AccessDeniedException("Acceso empresarial no autorizado."))
                 .toInstant();
-        send(email, token);
-        return new Issued(id, expires);
+        delivery.send(email, invitation);
+        return new Issued(invitation.id(), expires);
     }
 
     @Override
@@ -90,12 +78,12 @@ class JdbcCompanyInvitations implements CompanyInvitations {
 
     @Override
     public Accepted accept(String token) {
-        return consume(session.requireActiveUser(), null, null, null, fingerprint(token));
+        return consume(session.requireActiveUser(), null, null, null, InvitationDelivery.fingerprint(token));
     }
 
     @Override
     public Accepted enroll(String token, String displayName, String password) {
-        byte[] digest = fingerprint(token);
+        byte[] digest = InvitationDelivery.fingerprint(token);
         boolean eligible = jdbc.sql("SELECT comun.invitacion_admite_alta(:fingerprint, :version)")
                 .param("fingerprint", digest).param("version", SchemaMigrator.TENANT_STRUCTURE_VERSION)
                 .query(Boolean.class).single();
@@ -126,21 +114,6 @@ class JdbcCompanyInvitations implements CompanyInvitations {
         }
     }
 
-    private void send(String email, String token) {
-        var message = new SimpleMailMessage();
-        message.setFrom(settings.from());
-        message.setTo(email);
-        message.setSubject("Invitación a MSPI");
-        message.setText("Abra este enlace para aceptar su invitación a MSPI:\n"
-                + settings.acceptanceUrl().toASCIIString() + "#token=" + token
-                + "\nSi no esperaba esta invitación, puede ignorar el mensaje.");
-        try {
-            mail.send(message);
-        } catch (MailException failure) {
-            throw new InvitationFailure(InvitationFailure.Reason.DELIVERY);
-        }
-    }
-
     private static Accepted accepted(ResultSet row, int index) throws SQLException {
         var array = row.getArray("roles");
         try {
@@ -149,14 +122,6 @@ class JdbcCompanyInvitations implements CompanyInvitations {
                     row.getObject("usuario_id", UUID.class), roles);
         } finally {
             array.free();
-        }
-    }
-
-    private static byte[] fingerprint(String token) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.US_ASCII));
-        } catch (NoSuchAlgorithmException failure) {
-            throw new IllegalStateException("SHA-256 no disponible.", failure);
         }
     }
 

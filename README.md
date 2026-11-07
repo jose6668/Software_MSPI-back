@@ -12,6 +12,8 @@ La sesión permite listar empresas propias y consultar el contexto mínimo de un
 
 HU-009 incorpora invitaciones de un solo uso por correo SMTP. La función requiere habilitación, una vigencia explícita y la configuración del relay y de la página de aceptación. [Flujo de invitaciones](docs/INVITACIONES.md).
 
+HU-010 incorpora la reserva y activación con invitación inicial, la suspensión y la reactivación. [Ciclo de empresas y atribución del primer AP](docs/CICLO-EMPRESAS.md).
+
 ## Construcción y pruebas
 
 Requisitos: JDK 17 completo, Docker con contenedores Linux y acceso a Maven Central y Docker Hub para la primera descarga. No hace falta instalar Maven o PostgreSQL: el wrapper fija Maven 3.10.0 y Testcontainers inicia PostgreSQL `17.11-alpine` temporalmente.

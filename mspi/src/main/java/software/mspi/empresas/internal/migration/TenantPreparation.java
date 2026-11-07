@@ -62,7 +62,7 @@ final class TenantPreparation {
                         || !SchemaMigrator.TENANT_STRUCTURE_VERSION.equals(installed.getVersion().getVersion())) {
                     throw new IllegalStateException("La versión instalada no coincide con la soportada.");
                 }
-                verifyRuntime(scope, url, runtimePassword);
+                TenantRuntimeVerifier.verify(scope, url, runtimePassword);
                 journal.finish(Result.VERIFICADO);
                 output.printf("Intento %s: estructura %s verificada. Empresa en preparación.%n",
                         journal.attemptId(), SchemaMigrator.TENANT_STRUCTURE_VERSION);
@@ -87,33 +87,6 @@ final class TenantPreparation {
             }
             try (var statement = connection.createStatement()) {
                 statement.execute(new String(resource.readAllBytes(), StandardCharsets.UTF_8));
-            }
-        }
-    }
-
-    private static void verifyRuntime(MigrationScope scope, String url, String password) throws SQLException {
-        String schema = scope.schema();
-        String contextTable = schema + ".contexto_empresa";
-        try (var connection = DriverManager.getConnection(url, scope.runtimeRole(), password);
-                var statement = connection.prepareStatement("""
-                        SELECT current_user, empresa_id,
-                            pg_get_userbyid((SELECT relowner FROM pg_catalog.pg_class WHERE oid = context.tableoid)),
-                            has_table_privilege(tableoid, 'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES'),
-                            has_any_column_privilege(tableoid, 'INSERT,UPDATE,REFERENCES'),
-                            has_table_privilege(?::regclass, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES'),
-                            has_any_column_privilege(?::regclass, 'SELECT,INSERT,UPDATE,REFERENCES')
-                        FROM %s AS context
-                        """.formatted(contextTable))) {
-            statement.setString(1, schema + ".flyway_schema_history");
-            statement.setString(2, schema + ".flyway_schema_history");
-            try (var result = statement.executeQuery()) {
-                if (!result.next() || !scope.runtimeRole().equals(result.getString(1))
-                        || !scope.companyId().equals(result.getObject(2))
-                        || !scope.migrationRole().equals(result.getString(3))
-                        || result.getBoolean(4) || result.getBoolean(5) || result.getBoolean(6) || result.getBoolean(7)
-                        || result.next()) {
-                    throw new IllegalStateException("Propietario o permisos empresariales incompatibles.");
-                }
             }
         }
     }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.3.0'
+  version: '1.4.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -290,6 +290,135 @@ paths:
           $ref: '#/components/responses/AcceptedInvitation'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas:
+    get:
+      operationId: listarEmpresasPlataforma
+      summary: Lista metadatos de plataforma para AP
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: pagina
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: tamano
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Página de metadatos del servicio
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCompanyPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: reservarEmpresa
+      summary: Reserva una empresa en preparación
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Reutilizar el UUID para reintentar la misma reserva.
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReserveCompany'
+      responses:
+        '201':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas/{empresaId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: consultarEmpresaPlataforma
+      summary: Consulta metadatos y progreso técnico
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas/{empresaId}/activar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    post:
+      operationId: activarEmpresa
+      summary: Activa una empresa verificada y envía la primera invitación de AE
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        $ref: '#/components/requestBodies/PlatformRevision'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas/{empresaId}/invitacion-inicial/reemitir:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    post:
+      operationId: reemitirInvitacionInicial
+      summary: Reemite el primer enlace antes de su aceptación
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        $ref: '#/components/requestBodies/PlatformRevision'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas/{empresaId}/suspender:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    post:
+      operationId: suspenderEmpresa
+      summary: Suspende el acceso empresarial
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        $ref: '#/components/requestBodies/PlatformStateChange'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/plataforma/empresas/{empresaId}/reactivar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    post:
+      operationId: reactivarEmpresa
+      summary: Reactiva una empresa suspendida con estructura compatible
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        $ref: '#/components/requestBodies/PlatformStateChange'
+      responses:
+        '200':
+          $ref: '#/components/responses/PlatformCompany'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     sessionCookie:
@@ -320,6 +449,15 @@ components:
         type: string
         format: uuid
   responses:
+    PlatformCompany:
+      description: Metadatos de plataforma de la empresa
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PlatformCompany'
     AcceptedInvitation:
       description: Membresía creada con los roles de la invitación
       headers:
@@ -347,7 +485,70 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ApiProblem'
+  requestBodies:
+    PlatformRevision:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [revisionEsperada]
+            properties:
+              revisionEsperada: {type: integer, format: int64, minimum: 1}
+    PlatformStateChange:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [revisionEsperada, motivo]
+            properties:
+              revisionEsperada: {type: integer, format: int64, minimum: 1}
+              motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    ReserveCompany:
+      type: object
+      additionalProperties: false
+      required: [nombre, zonaHoraria, contactoInicial]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        descripcion: {type: [string, 'null']}
+        zonaHoraria: {type: string, minLength: 1, description: Zona IANA reconocida por el servidor}
+        contactoInicial: {type: string, format: email, maxLength: 254}
+    PlatformCompany:
+      type: object
+      additionalProperties: false
+      required: [empresaId, nombre, descripcion, zonaHoraria, estado, versionEstructura, revision,
+                 pasoPreparacion, resultadoPreparacion, referenciaFallo, motivoEstado, invitacionInicialId]
+      properties:
+        empresaId: {type: string, format: uuid}
+        nombre: {type: string}
+        descripcion: {type: [string, 'null']}
+        zonaHoraria: {type: string}
+        estado:
+          type: string
+          enum: [EN_PREPARACION, ERROR_APROVISIONAMIENTO, ACTIVA, SUSPENDIDA]
+        versionEstructura: {type: [string, 'null']}
+        revision: {type: integer, format: int64, minimum: 1}
+        pasoPreparacion: {type: [string, 'null']}
+        resultadoPreparacion: {type: [string, 'null']}
+        referenciaFallo: {type: [string, 'null'], format: uuid}
+        motivoEstado: {type: [string, 'null']}
+        invitacionInicialId: {type: [string, 'null'], format: uuid}
+    PlatformCompanyPage:
+      type: object
+      additionalProperties: false
+      required: [empresas, pagina, tamano, hayMas]
+      properties:
+        empresas:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformCompany'
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     OfferedRoles:
       type: array
       minItems: 1
