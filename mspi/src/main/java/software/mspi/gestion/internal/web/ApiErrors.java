@@ -24,6 +24,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
+import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
 import software.mspi.identidad.api.LoginLimitException;
@@ -128,6 +129,17 @@ final class ApiErrors {
                         "No se pudo enviar la invitación. Intente de nuevo más tarde.");
                 case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
                         "La contraseña no alcanza la longitud mínima configurada.")));
+            };
+        }
+        if (failure instanceof CompanyAdministrationFailure administration) {
+            return switch (administration.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case LAST_ADMINISTRATOR -> new Problem(HttpStatus.CONFLICT, "ULTIMO_AE",
+                        "La empresa debe conservar al menos un administrador activo.");
+                case REVOKED -> new Problem(HttpStatus.CONFLICT, "MEMBRESIA_REVOCADA",
+                        "La membresía revocada ya no se puede modificar.");
+                case INVALID_ZONE -> validation(List.of(new Field("zonaHoraria", "VALOR_INVALIDO",
+                        "Use una zona horaria reconocida por el sistema.")));
             };
         }
         if (failure instanceof PlatformFailure platform) {

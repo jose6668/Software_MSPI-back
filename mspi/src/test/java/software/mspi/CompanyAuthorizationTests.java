@@ -1,8 +1,13 @@
 package software.mspi;
 
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import jakarta.persistence.EntityManager;
@@ -59,6 +64,10 @@ class CompanyAuthorizationTests {
 
     private static final String MINE = "/api/v1/mis-empresas";
     private static final String CONTEXT = "/api/v1/empresas/{empresaId}/contexto";
+    private static final String CONFIGURATION = "/api/v1/empresas/{empresaId}/configuracion";
+    private static final String MEMBERS = "/api/v1/empresas/{empresaId}/membresias";
+    private static final String RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables";
+    private static final String ROLES = MEMBERS + "/{membresiaId}/roles";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
 
@@ -224,6 +233,192 @@ class CompanyAuthorizationTests {
             assertThat(insert.executeUpdate()).isEqualTo(1);
             insert.setObject(2, membershipB);
             assertSqlState(insert::executeUpdate, "23503");
+        }
+    }
+
+    @Test
+    void configurationEnforcesRolesAndRevisionAndRecordsHistory() throws Exception {
+        UUID company = operableCompany();
+        var administrator = account();
+        member(administrator, company, "AE");
+        var gs = account();
+        member(gs, company, "GS");
+        var ra = account();
+        member(ra, company, "RA");
+        var administratorSession = login(administrator);
+        var gsSession = login(gs);
+        var raSession = login(ra);
+        mvc.perform(get(CONFIGURATION, company)).andExpect(status().isUnauthorized());
+        mvc.perform(get(CONFIGURATION, company).session(raSession)).andExpect(status().isForbidden());
+        mvc.perform(get(CONTEXT, company).session(raSession)).andExpect(status().isOk());
+        mvc.perform(get(CONFIGURATION, company).session(gsSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.zonaHoraria").value("America/Bogota"));
+
+        var input = Map.<String, Object>of("nombre", "Empresa actualizada", "descripcion", "Descripción",
+                "zonaHoraria", "America/Lima", "revisionEsperada", 1);
+        configure(company, gsSession, input).andExpect(status().isForbidden());
+        var forbidden = new HashMap<>(input);
+        forbidden.put("esquemaInterno", "emp_otro");
+        configure(company, administratorSession, forbidden).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CAMPO_NO_PERMITIDO"));
+        var invalid = new HashMap<>(input);
+        invalid.put("zonaHoraria", "Zona/invalida");
+        configure(company, administratorSession, invalid).andExpect(status().isBadRequest());
+        var updated = configure(company, administratorSession, input).andExpect(status().isNoContent()).andReturn();
+        configure(company, administratorSession, input).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REVISION_DESACTUALIZADA"));
+        mvc.perform(get(CONFIGURATION, company).session(gsSession)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.nombre").value("Empresa actualizada"))
+                .andExpect(jsonPath("$.zonaHoraria").value("America/Lima"))
+                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.esquemaInterno").doesNotExist());
+        assertThat(count("""
+                SELECT count(*) FROM comun.eventos_administracion_empresa
+                WHERE empresa_id = ? AND actor_id = ? AND correlacion_id = ? AND operacion = 'CONFIGURAR'
+                  AND anterior->>'zonaHoraria' = 'America/Bogota' AND nuevo->>'zonaHoraria' = 'America/Lima'
+                """, company, administrator.id(), UUID.fromString(updated.getResponse().getHeader("X-Correlation-Id"))))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void selectorReturnsOnlyMinimalLocalEligibleMembers() throws Exception {
+        UUID company = operableCompany();
+        var administrator = account();
+        var gs = account();
+        var au = account();
+        var ra = account();
+        UUID aeId = member(administrator, company, "AE");
+        UUID gsId = member(gs, company, "GS");
+        member(au, company, "AU");
+        UUID raId = member(ra, company, "RA");
+        member(gs, b(), "AE");
+        var gsSession = login(gs);
+        var aeSession = login(administrator);
+        mvc.perform(get(MEMBERS, company).session(gsSession)).andExpect(status().isForbidden());
+        mvc.perform(get(MEMBERS, company).session(aeSession).param("tamano", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.hayMas").value(true));
+        mvc.perform(get(RESPONSIBLES, company).session(login(ra))).andExpect(status().isForbidden());
+        var response = mvc.perform(get(RESPONSIBLES, company).session(gsSession)).andExpect(status().isOk()).andReturn();
+        var rows = mapper.readTree(response.getResponse().getContentAsByteArray()).path("elementos");
+        assertThat(rows.valueStream().map(row -> row.path("membresiaId").asString()).toList())
+                .containsExactlyInAnyOrder(aeId.toString(), gsId.toString(), raId.toString());
+        rows.forEach(row -> assertThat(row.propertyNames()).containsExactlyInAnyOrder("membresiaId", "nombreVisible"));
+    }
+
+    @Test
+    void roleChangeAndRevocationApplyToAnOpenSessionOnlyInTheTargetCompany() throws Exception {
+        var administrator = account();
+        member(administrator, b(), "AE");
+        var target = account();
+        UUID foreignMembership = member(target, a(), "AU");
+        UUID membership = member(target, b(), "AU", "GS");
+        var ae = login(administrator);
+        var targetSession = login(target);
+        mvc.perform(put(ROLES, b(), membership).session(ae).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"revisionEsperada\":1,\"motivo\":\"Revisión\",\"roles\":[\"AU\"]}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALIDO"));
+        for (var invalid : List.of(List.of(), List.of("AP"),
+                List.of("AU", "AU"), List.of(0))) {
+            changeRoles(ae, b(), membership, 1, invalid).andExpect(status().isBadRequest());
+        }
+        changeRoles(ae, b(), foreignMembership, 1, List.of("AU")).andExpect(status().isNotFound());
+        changeRoles(ae, b(), membership, 1, List.of("AU")).andExpect(status().isNoContent());
+        changeRoles(ae, b(), membership, 1, List.of("GS")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REVISION_DESACTUALIZADA"));
+        edit(targetSession, b(), "denegado").andExpect(status().isForbidden());
+        read(targetSession, b(), SHARED).andExpect(status().isOk());
+
+        revoke(ae, b(), membership, 2).andExpect(status().isNoContent());
+        changeRoles(ae, b(), membership, 3, List.of("AE")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MEMBRESIA_REVOCADA"));
+        read(targetSession, b(), SHARED).andExpect(status().isForbidden());
+        read(targetSession, a(), SHARED).andExpect(status().isOk());
+        assertThat(count("""
+                SELECT count(*) FROM comun.eventos_administracion_empresa
+                WHERE membresia_id = ? AND actor_id = ? AND motivo = 'Revisión'
+                  AND operacion = 'CAMBIAR_ROLES'
+                  AND anterior->'roles' = '["AU","GS"]'::jsonb AND nuevo->'roles' = '["AU"]'::jsonb
+                """, membership, administrator.id())).isEqualTo(1);
+        assertThat(count("""
+                SELECT count(*) FROM comun.eventos_administracion_empresa
+                WHERE membresia_id = ? AND operacion = 'REVOCAR_MEMBRESIA' AND nuevo->>'estado' = 'REVOCADA'
+                """, membership)).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentSelfDemotionAndRevocationCannotRemoveBothAdministrators() throws Exception {
+        UUID company = operableCompany();
+        var first = account();
+        var second = account();
+        UUID firstMember = member(first, company, "AE");
+        UUID secondMember = member(second, company, "AE");
+        var firstSession = login(first);
+        var secondSession = login(second);
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var demotion = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return changeRoles(firstSession, company, firstMember, 1, List.of("AU")).andReturn();
+            });
+            var revocation = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return revoke(secondSession, company, secondMember, 1).andReturn();
+            });
+            var responses = List.of(demotion.get(15, TimeUnit.SECONDS), revocation.get(15, TimeUnit.SECONDS));
+            assertThat(responses).extracting(result -> result.getResponse().getStatus())
+                    .containsExactlyInAnyOrder(204, 409);
+            var rejected = responses.stream().filter(result -> result.getResponse().getStatus() == 409).findFirst().orElseThrow();
+            assertThat(mapper.readTree(rejected.getResponse().getContentAsByteArray()).path("code").asString())
+                    .isEqualTo("ULTIMO_AE");
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThat(count("""
+                SELECT count(*) FROM comun.membresias m JOIN comun.membresia_roles r ON m.id = r.membresia_id
+                WHERE m.empresa_id = ? AND m.estado = 'ACTIVA' AND r.rol_codigo = 'AE'
+                """, company)).isEqualTo(1);
+        assertThat(count("SELECT count(*) FROM comun.eventos_administracion_empresa WHERE empresa_id = ?", company))
+                .isEqualTo(1);
+        try (var runtime = fixture.database.runtime(); var statement = runtime.createStatement()) {
+            assertSqlState(() -> statement.executeQuery("SELECT anterior FROM comun.eventos_administracion_empresa"), "42501");
+            assertSqlState(() -> statement.executeUpdate("UPDATE comun.membresias SET revision = 10"), "42501");
+        }
+    }
+
+    private UUID operableCompany() throws SQLException {
+        UUID company = fixture.database.reserveTenant().scope().companyId();
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '1' WHERE id = ?", company);
+        return company;
+    }
+
+    private ResultActions configure(UUID company, MockHttpSession session, Map<String, Object> input) throws Exception {
+        return mvc.perform(put(CONFIGURATION, company).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(input)));
+    }
+
+    private ResultActions changeRoles(MockHttpSession session, UUID company, UUID member, long revision,
+                                      List<?> roles) throws Exception {
+        return mvc.perform(put(ROLES, company, member).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", revision, "roles", roles, "motivo", "Revisión"))));
+    }
+
+    private ResultActions revoke(MockHttpSession session, UUID company, UUID member, long revision) throws Exception {
+        return mvc.perform(post(MEMBERS + "/{membresiaId}/revocar", company, member).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", revision, "motivo", "Salida"))));
+    }
+
+    private long count(String sql, Object... values) throws SQLException {
+        try (var connection = fixture.database.admin(); var statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < values.length; index++) {
+                statement.setObject(index + 1, values[index]);
+            }
+            try (var rows = statement.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                return rows.getLong(1);
+            }
         }
     }
 

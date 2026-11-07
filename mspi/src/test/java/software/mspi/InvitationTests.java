@@ -225,6 +225,30 @@ class InvitationTests {
         accept(invited, replacement.token()).andExpect(status().isCreated());
     }
 
+    @Test
+    void listsInvitationStatesWithoutExposingTokensOrCrossingCompanies() throws Exception {
+        var recipient = account();
+        var accepted = issueToken(ae, company, recipient.email(), "AU");
+        accept(login(recipient), accepted.token()).andExpect(status().isCreated());
+        var revoked = issueToken(ae, company, account().email(), "GS");
+        revoke(ae, company, revoked.id()).andExpect(status().isNoContent());
+        var expired = issueToken(ae, company, account().email(), "RA");
+        sql("""
+                UPDATE comun.invitaciones SET creada_en = CURRENT_TIMESTAMP - interval '2 days',
+                    vence_en = CURRENT_TIMESTAMP - interval '1 day' WHERE id = ?
+                """, expired.id());
+        var pending = issueToken(ae, company, account().email(), "AE");
+        mvc.perform(get(ISSUE, company).session(login(recipient))).andExpect(status().isForbidden());
+        mvc.perform(get(ISSUE, UUID.randomUUID()).session(ae)).andExpect(status().isForbidden());
+        var result = mvc.perform(get(ISSUE, company).session(ae)).andExpect(status().isOk()).andReturn();
+        var body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain(accepted.token(), revoked.token(), expired.token(), pending.token(), "huella");
+        var rows = mapper.readTree(body).path("elementos");
+        assertThat(rows.valueStream().map(row -> row.path("invitacionId").asString() + ":" + row.path("estado").asString()))
+                .containsExactlyInAnyOrder(accepted.id() + ":ACEPTADA", revoked.id() + ":REVOCADA",
+                        expired.id() + ":VENCIDA", pending.id() + ":PENDIENTE");
+    }
+
     private ResultActions issue(MockHttpSession session, UUID companyId, String email, String... roles) throws Exception {
         return mvc.perform(post(ISSUE, companyId).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content(body(Map.of("correo", email, "roles", roles))));

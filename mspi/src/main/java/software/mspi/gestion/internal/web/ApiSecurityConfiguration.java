@@ -52,6 +52,12 @@ class ApiSecurityConfiguration {
                                 ApiInvitationController.ACCEPT).authenticated()
                         .requestMatchers(HttpMethod.GET, ApiCompanyController.MINE, ApiCompanyController.CONTEXT)
                         .authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiCompanyAdministrationController.CONFIGURATION,
+                                ApiCompanyAdministrationController.MEMBERS, ApiCompanyAdministrationController.RESPONSIBLES,
+                                ApiInvitationController.ISSUE).authenticated()
+                        .requestMatchers(HttpMethod.PUT, ApiCompanyAdministrationController.CONFIGURATION,
+                                ApiCompanyAdministrationController.ROLES).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiCompanyAdministrationController.REVOKE).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

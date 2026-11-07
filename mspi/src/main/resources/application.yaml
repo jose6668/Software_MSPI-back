@@ -24,6 +24,9 @@ spring:
       fail-on-unknown-properties: true
       accept-float-as-int: false
       fail-on-trailing-tokens: true
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
     mapper:
       allow-coercion-of-scalars: false
     read:
