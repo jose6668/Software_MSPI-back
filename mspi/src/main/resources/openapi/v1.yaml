@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.1.0'
+  version: '1.2.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -125,6 +125,79 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/mis-empresas:
+    get:
+      operationId: listarMisEmpresas
+      summary: Lista las empresas operables de la sesión
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: tamano
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página ordenada por nombre y UUID
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyPage'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '406':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/contexto:
+    get:
+      operationId: consultarContextoEmpresa
+      summary: Consulta la membresía propia y el contexto mínimo de la empresa
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: empresaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Contexto y roles locales vigentes
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyMembership'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '406':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     sessionCookie:
@@ -167,6 +240,43 @@ components:
           schema:
             $ref: '#/components/schemas/ApiProblem'
   schemas:
+    CompanyMembership:
+      type: object
+      additionalProperties: false
+      required: [empresaId, nombre, zonaHoraria, roles]
+      properties:
+        empresaId:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        zonaHoraria:
+          type: string
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: [AE, GS, RA, AU]
+    CompanyPage:
+      type: object
+      additionalProperties: false
+      required: [empresas, pagina, tamano, hayMas]
+      properties:
+        empresas:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompanyMembership'
+        pagina:
+          type: integer
+          minimum: 0
+        tamano:
+          type: integer
+          minimum: 1
+          maximum: 100
+        hayMas:
+          type: boolean
     CsrfView:
       type: object
       additionalProperties: false

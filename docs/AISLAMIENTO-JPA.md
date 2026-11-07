@@ -12,18 +12,18 @@ Flyway sigue siendo el único responsable del DDL. La unidad empresarial no vali
 
 ## Unidad de trabajo y autorización
 
-`empresas.api.TenantUnitOfWork.execute(actorId, companyId, operación)` es el contrato interno para iniciar una operación empresarial:
+`empresas.api.TenantUnitOfWork.execute(actorId, companyId, permiso, operación)` es el contrato interno para iniciar una operación empresarial:
 
 1. Exige identidad y empresa explícitas; rechaza comenzar dentro de otra transacción.
-2. Invoca `TenantAccessPolicy` antes de consultar secretos o reservar conexiones.
+2. Invoca `TenantAccessPolicy` antes de consultar secretos o reservar conexiones. Comprueba que el actor coincida con la sesión y que la empresa, membresía y permiso estén vigentes.
 3. Lee de nuevo el registro común: exige `ACTIVA`, versión estructural `1` y esquema derivado del UUID.
 4. Reserva el pool exclusivo, fija el contexto del hilo y abre una transacción empresarial.
 5. Al obtener una conexión verifica `current_user` y la única fila propietaria del esquema.
 6. Confirma o revierte; limpia y devuelve la conexión; elimina el contexto y libera la reserva incluso ante errores.
 
-Una llamada anidada con el mismo actor y empresa participa en la misma transacción. Cambiar cualquiera de ellos produce rechazo y marca rollback, aunque el llamador capture el error. No se propaga contexto a otros hilos. Las siguientes unidades vuelven a comprobar política y registro; una llamada anidada participa en la autorización de su unidad ya iniciada.
+Una llamada anidada con el mismo actor, empresa y permiso participa en la misma transacción. Cambiar cualquiera produce rechazo y marca rollback, aunque el llamador capture el error. No se propaga contexto a otros hilos. Las siguientes unidades vuelven a comprobar política y registro.
 
-**La política predeterminada deniega todo acceso.** La identidad de sesión y la membresía real se implementan en HU-007/008. Su adaptador deberá contrastar el actor con la identidad autenticada por el servidor y consultar permisos vigentes; el UUID recibido por este contrato interno no acredita identidad. Las concesiones ficticias de pruebas no se empaquetan ni se exponen mediante HTTP. No se han creado endpoints empresariales.
+La política productiva utiliza la identidad de sesión de HU-007 y las membresías de HU-008. Un UUID de actor aportado al contrato no acredita identidad. Las concesiones ficticias de los tests de aislamiento se conservan para sus escenarios técnicos. [Permisos por empresa](PERMISOS-EMPRESA.md).
 
 ## Conexiones y secretos
 

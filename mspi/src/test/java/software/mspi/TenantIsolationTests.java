@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import jakarta.persistence.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.*;
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.support.SimpleJpaRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
+import software.mspi.empresas.api.CompanyPermission;
 import software.mspi.empresas.api.TenantUnitOfWork;
 import software.mspi.empresas.internal.persistence.common.CompanyRegistration;
 import software.mspi.empresas.internal.persistence.tenant.*;
@@ -35,22 +37,25 @@ class TenantIsolationTests {
     private UUID a() { return fixture.first.scope().companyId(); }
     private UUID b() { return fixture.second.scope().companyId(); }
     private UUID c() { return fixture.third.scope().companyId(); }
+    private <T> T execute(UUID actor, UUID company, Supplier<T> operation) {
+        return work.execute(actor, company, CompanyPermission.READ_CONTEXT, operation);
+    }
     private SimpleJpaRepository<IsolationProbe, UUID> repository() {
         return new SimpleJpaRepository<>(IsolationProbe.class, entityManager);
     }
     private String value(UUID company) {
-        return work.execute(fixture.actor, company,
+        return execute(fixture.actor, company,
                 () -> repository().findById(TenantIsolationFixture.SHARED_ID).orElseThrow().getValue());
     }
     private int pid(UUID company) {
-        return work.execute(fixture.actor, company,
+        return execute(fixture.actor, company,
                 () -> ((Number) entityManager.createNativeQuery("select pg_backend_pid()").getSingleResult()).intValue());
     }
 
     @Test void rejectsUnauthorizedAccessBeforeResolvingCredentialsAndUnscopedJpa() {
         int loads = fixture.secretLoads.get();
         var called = new AtomicBoolean();
-        assertThatThrownBy(() -> work.execute(fixture.otherActor, b(), () -> { called.set(true); return "invalid"; }))
+        assertThatThrownBy(() -> execute(fixture.otherActor, b(), () -> { called.set(true); return "invalid"; }))
                 .isInstanceOf(AccessDeniedException.class);
         assertThat(called).isFalse();
         assertThat(fixture.secretLoads.get()).isEqualTo(loads);
@@ -72,7 +77,7 @@ class TenantIsolationTests {
     }
 
     @Test void rollsBackWritesAfterExceptionsAndKeepsNextCompanyClean() {
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(), () -> {
             var row = repository().findById(TenantIsolationFixture.SHARED_ID).orElseThrow();
             row.setValue("must-rollback");
             entityManager.flush();
@@ -84,15 +89,18 @@ class TenantIsolationTests {
     }
 
     @Test void rejectsCompanyOrActorChangeAndJoinsOnlyTheSameUnit() {
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(), () -> {
             repository().findById(TenantIsolationFixture.SHARED_ID).orElseThrow().setValue("must-rollback");
-            try { work.execute(fixture.actor, b(), () -> "forbidden"); } catch (IllegalStateException ignored) {}
+            try { execute(fixture.actor, b(), () -> "forbidden"); } catch (IllegalStateException ignored) {}
             return "cannot-commit";
         })).isInstanceOf(IllegalStateException.class);
         assertThat(value(a())).isEqualTo("A");
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(),
-                () -> work.execute(fixture.otherActor, a(), () -> "forbidden"))).isInstanceOf(IllegalStateException.class);
-        work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(),
+                () -> execute(fixture.otherActor, a(), () -> "forbidden"))).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> execute(fixture.actor, a(),
+                () -> work.execute(fixture.actor, a(), CompanyPermission.EDIT_ASSETS, () -> "forbidden")))
+                .isInstanceOf(IllegalStateException.class);
+        execute(fixture.actor, a(), () -> {
             int current = ((Number) entityManager.createNativeQuery("select pg_backend_pid()").getSingleResult()).intValue();
             assertThat(pid(a())).isEqualTo(current);
             return null;
@@ -106,22 +114,22 @@ class TenantIsolationTests {
             assertThatThrownBy(() -> em.createNativeQuery("select * from " + fixture.first.scope().schema() + ".contexto_empresa")
                     .getResultList()).isInstanceOf(RuntimeException.class);
         }
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(), () -> {
             entityManager.find(CompanyRegistration.class, a());
             return null;
         })).isInstanceOf(IllegalArgumentException.class);
-        work.execute(fixture.actor, a(), () -> {
+        execute(fixture.actor, a(), () -> {
             assertThat(contexts.findById(a())).isPresent();
             return null;
         });
     }
 
     @Test void databaseRejectsForeignIdsAndQualifiedCrossCompanySql() {
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(), () -> {
             entityManager.createNativeQuery("select * from " + fixture.second.scope().schema() + ".isolation_probe").getResultList();
             return null;
         })).isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> work.execute(fixture.actor, a(), () -> {
+        assertThatThrownBy(() -> execute(fixture.actor, a(), () -> {
             repository().saveAndFlush(new IsolationProbe(UUID.randomUUID(), b(), "foreign"));
             return null;
         })).isInstanceOf(RuntimeException.class);
@@ -131,7 +139,7 @@ class TenantIsolationTests {
 
     @Test void cleansNativeSessionStateBeforeReusingThePool() {
         int backend = pid(a());
-        work.execute(fixture.actor, a(), () -> {
+        execute(fixture.actor, a(), () -> {
             entityManager.createNativeQuery("set search_path = public").executeUpdate();
             return null;
         });
@@ -194,14 +202,14 @@ class TenantIsolationTests {
 
     @Test void commitsOnlyToTheSelectedCompany() {
         try {
-            work.execute(fixture.actor, a(), () -> {
+            execute(fixture.actor, a(), () -> {
                 repository().findById(TenantIsolationFixture.SHARED_ID).orElseThrow().setValue("A-updated");
                 return null;
             });
             assertThat(value(a())).isEqualTo("A-updated");
             assertThat(value(b())).isEqualTo("B");
         } finally {
-            work.execute(fixture.actor, a(), () -> {
+            execute(fixture.actor, a(), () -> {
                 repository().findById(TenantIsolationFixture.SHARED_ID).orElseThrow().setValue("A");
                 return null;
             });
@@ -227,7 +235,7 @@ class TenantIsolationTests {
             statement.execute("DELETE FROM " + invalid.scope().schema() + ".contexto_empresa");
         }
         var called = new AtomicBoolean();
-        assertThatThrownBy(() -> work.execute(fixture.actor, invalid.scope().companyId(),
+        assertThatThrownBy(() -> execute(fixture.actor, invalid.scope().companyId(),
                 () -> { called.set(true); return "invalid"; })).isInstanceOf(RuntimeException.class);
         assertThat(called).isFalse();
         assertThat(value(b())).isEqualTo("B");
@@ -235,7 +243,7 @@ class TenantIsolationTests {
     }
 
     private String hold(UUID company, CountDownLatch ready, CountDownLatch release) {
-        return work.execute(fixture.actor, company, () -> {
+        return execute(fixture.actor, company, () -> {
             assertThat(repository().findById(TenantIsolationFixture.SHARED_ID)).isPresent();
             ready.countDown();
             try {

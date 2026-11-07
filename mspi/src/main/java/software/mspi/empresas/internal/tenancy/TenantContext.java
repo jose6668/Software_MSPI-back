@@ -1,6 +1,7 @@
 package software.mspi.empresas.internal.tenancy;
 import java.util.UUID;
 import org.springframework.transaction.TransactionStatus;
+import software.mspi.empresas.api.CompanyPermission;
 
 final class TenantContext {
     private final ThreadLocal<Frame> current = new ThreadLocal<>();
@@ -15,14 +16,15 @@ final class TenantContext {
     static final class Frame {
         final UUID actor;
         final UUID company;
+        final CompanyPermission permission;
         final TenantConnectionPools.Lease lease;
         TransactionStatus status;
-        Frame(UUID actor, UUID company, TenantConnectionPools.Lease lease) {
-            this.actor = actor; this.company = company; this.lease = lease;
+        Frame(UUID actor, UUID company, CompanyPermission permission, TenantConnectionPools.Lease lease) {
+            this.actor = actor; this.company = company; this.permission = permission; this.lease = lease;
         }
         void rejectChange() {
             if (status != null) status.setRollbackOnly();
-            throw new IllegalStateException("No se permite cambiar empresa o actor dentro de la transacción.");
+            throw new IllegalStateException("No se permite cambiar empresa, actor o permiso dentro de la transacción.");
         }
     }
 }

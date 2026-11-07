@@ -63,7 +63,7 @@ final class TenantIsolationFixture {
     }
 
     TenantAccessPolicy policy() {
-        return (user, company) -> {
+        return (user, company, permission) -> {
             if (!grants.getOrDefault(user, Set.of()).contains(company)) throw new AccessDeniedException("Acceso no autorizado.");
         };
     }

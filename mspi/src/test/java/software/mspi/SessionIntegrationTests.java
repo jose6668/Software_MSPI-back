@@ -82,7 +82,11 @@ class SessionIntegrationTests {
         assertThat(login.body()).doesNotContain(password, hash, sessionCookie);
         assertThat(send("GET", SESSION, sessionCookie, null, null).statusCode()).isEqualTo(200);
         assertProblem(send("GET", SESSION, before.cookie(), null, null), 401, "NO_AUTENTICADO");
-        assertProblem(send("GET", "/api/v1/mis-empresas", sessionCookie, null, null), 403, "ACCESO_DENEGADO");
+        var companies = send("GET", "/api/v1/mis-empresas", sessionCookie, null, null);
+        assertThat(companies.statusCode()).isEqualTo(200);
+        assertThat(json(companies).path("empresas").isEmpty()).isTrue();
+        assertProblem(send("GET", "/api/v1/empresas/" + UUID.randomUUID() + "/contexto", sessionCookie, null, null),
+                403, "ACCESO_DENEGADO");
 
         assertProblem(send("DELETE", SESSION, sessionCookie, before, null), 403, "CSRF_INVALIDO");
         assertThat(send("GET", SESSION, sessionCookie, null, null).statusCode()).isEqualTo(200);

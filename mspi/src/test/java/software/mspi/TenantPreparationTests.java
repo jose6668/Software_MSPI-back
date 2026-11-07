@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.context.ActiveProfiles;
+import software.mspi.empresas.api.CompanyPermission;
 import software.mspi.empresas.api.TenantUnitOfWork;
 import software.mspi.empresas.internal.migration.MigrationCli;
 import software.mspi.empresas.internal.persistence.tenant.IsolationProbe;
@@ -144,13 +145,14 @@ class TenantPreparationTests {
 
     private void assertBlocked(TestDatabase.Tenant tenant) {
         int credentialLoads = fixture.secretLoads.get();
-        assertThatThrownBy(() -> work.execute(fixture.actor, tenant.scope().companyId(), () -> "invalid"))
+        assertThatThrownBy(() -> work.execute(fixture.actor, tenant.scope().companyId(), CompanyPermission.READ_CONTEXT,
+                () -> "invalid"))
                 .isInstanceOf(AccessDeniedException.class);
         assertThat(fixture.secretLoads.get()).isEqualTo(credentialLoads);
     }
 
     private String readCompatibleCompany() {
-        return work.execute(fixture.actor, fixture.second.scope().companyId(),
+        return work.execute(fixture.actor, fixture.second.scope().companyId(), CompanyPermission.READ_CONTEXT,
                 () -> entityManager.find(IsolationProbe.class, TenantIsolationFixture.SHARED_ID).getValue());
     }
 
