@@ -7,7 +7,7 @@ import java.util.UUID;
 import org.springframework.security.core.AuthenticatedPrincipal;
 
 /** Identity retained in the server session, without credentials or company permissions. */
-public record SessionIdentity(UUID usuarioId, String nombreVisible, Instant expiraEn)
+public record SessionIdentity(UUID usuarioId, String nombreVisible, Instant expiraEn, long credentialVersion)
         implements AuthenticatedPrincipal, Serializable {
 
     @Override

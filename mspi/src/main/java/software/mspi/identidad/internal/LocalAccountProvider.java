@@ -21,7 +21,7 @@ final class LocalAccountProvider implements AuthenticationProvider {
     private final PasswordEncoder encoder;
     private final Clock clock;
     private final IdentitySettings settings;
-    private final LoginAttempts attempts;
+    private final AttemptLimiter attempts;
     private final Semaphore checks;
     private final String dummyHash;
 
@@ -30,7 +30,8 @@ final class LocalAccountProvider implements AuthenticationProvider {
         this.encoder = encoder;
         this.settings = settings;
         this.clock = clock;
-        this.attempts = new LoginAttempts(settings, clock);
+        this.attempts = new AttemptLimiter(settings.attemptWindow(), settings.attemptsPerAccount(),
+                settings.attemptsPerAddress(), settings.totalAttempts(), clock);
         this.checks = new Semaphore(settings.concurrentChecks());
         this.dummyHash = encoder.encode(UUID.randomUUID().toString());
     }
@@ -52,12 +53,12 @@ final class LocalAccountProvider implements AuthenticationProvider {
 
     private Authentication verify(String accountKey, String password) {
         var account = jdbc.sql("""
-                SELECT id, nombre_visible, hash_credencial FROM comun.usuarios
+                SELECT id, nombre_visible, hash_credencial, version_credencial FROM comun.usuarios
                 WHERE clave_correo = :key AND estado_cuenta = 'HABILITADA'
                 """)
                 .param("key", accountKey)
                 .query((row, index) -> new Account(row.getObject("id", UUID.class),
-                        row.getString("nombre_visible"), row.getString("hash_credencial")))
+                        row.getString("nombre_visible"), row.getString("hash_credencial"), row.getLong("version_credencial")))
                 .optional();
         String hash = account.map(Account::hash).orElse(dummyHash);
         boolean matches;
@@ -73,7 +74,7 @@ final class LocalAccountProvider implements AuthenticationProvider {
         }
         Account identity = account.orElseThrow();
         var principal = new SessionIdentity(identity.id(), identity.displayName(),
-                clock.instant().plus(settings.sessionLifetime()));
+                clock.instant().plus(settings.sessionLifetime()), identity.credentialVersion());
         return UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of());
     }
 
@@ -82,5 +83,5 @@ final class LocalAccountProvider implements AuthenticationProvider {
         return UsernamePasswordAuthenticationToken.class.isAssignableFrom(type);
     }
 
-    private record Account(UUID id, String displayName, String hash) {}
+    private record Account(UUID id, String displayName, String hash, long credentialVersion) {}
 }
