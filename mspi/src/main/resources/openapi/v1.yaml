@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.9.0'
+  version: '1.10.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -558,6 +558,154 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssetValuation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/catalogos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarCatalogos
+      summary: Lista ediciones publicadas de catálogos
+      description: Requiere AE, GS o AU de la empresa operable. Incluye ediciones retiradas salvo filtro.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/ReferenceCode'
+        - $ref: '#/components/parameters/AvailableForNewUses'
+      responses:
+        '200':
+          description: Lista ediciones publicadas de catálogos
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/catalogos/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ReferenceVersionId'
+    get:
+      operationId: consultarCatalogo
+      summary: Consulta metadatos de una edición
+      description: Requiere AE, GS o AU de la empresa operable.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta metadatos de una edición
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceCatalogVersion'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/catalogos/{versionId}/elementos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ReferenceVersionId'
+    get:
+      operationId: listarElementosCatalogo
+      summary: Lista controles y cláusulas de una edición
+      description: Requiere AE, GS o AU de la empresa operable. Filtra por tipo, grupo, código o texto literal.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/ReferenceType'
+        - $ref: '#/components/parameters/ReferenceGroup'
+        - $ref: '#/components/parameters/ReferenceCode'
+        - $ref: '#/components/parameters/ReferenceText'
+      responses:
+        '200':
+          description: Lista controles y cláusulas de una edición
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceElementPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/catalogos/{versionId}/elementos/{elementoId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ReferenceVersionId'
+      - $ref: '#/components/parameters/ReferenceElementId'
+    get:
+      operationId: consultarElementoCatalogo
+      summary: Consulta descripción y origen del elemento
+      description: Requiere AE, GS o AU de la empresa operable. El identificador debe pertenecer a la edición solicitada.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta descripción y origen del elemento
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceElement'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/metodologias:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarMetodologias
+      summary: Lista versiones publicadas de metodología
+      description: Requiere AE, GS o AU de la empresa operable.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/ReferenceCode'
+        - $ref: '#/components/parameters/AvailableForNewUses'
+      responses:
+        '200':
+          description: Lista versiones publicadas de metodología
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceMethodPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/metodologias/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ReferenceVersionId'
+    get:
+      operationId: consultarMetodologia
+      summary: Consulta una versión de metodología
+      description: Requiere AE, GS o AU de la empresa operable. Incluye reglas declarativas y referencia de aprobación.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta una versión de metodología
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferenceMethodVersion'
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
@@ -1212,6 +1360,36 @@ components:
       name: MSPISESSION
       description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
   parameters:
+    ReferenceVersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ReferenceElementId:
+      name: elementoId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    AvailableForNewUses:
+      name: disponibleNuevos
+      in: query
+      schema: {type: boolean}
+    ReferenceCode:
+      name: codigo
+      in: query
+      schema: {type: string, maxLength: 80}
+    ReferenceGroup:
+      name: grupo
+      in: query
+      schema: {type: string, maxLength: 80}
+    ReferenceType:
+      name: tipo
+      in: query
+      schema: {type: string, enum: [CONTROL, CLAUSULA]}
+    ReferenceText:
+      name: texto
+      in: query
+      schema: {type: string, maxLength: 250}
     AssetValuationId:
       name: valoracionId
       in: path
@@ -1346,6 +1524,87 @@ components:
               revisionEsperada: {type: integer, format: int64, minimum: 1}
               motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    ReferenceCatalogVersion:
+      type: object
+      additionalProperties: false
+      required: [versionId, codigo, version, nombre, origen, huellaOrigen, publicadaEn, disponibleNuevos]
+      properties:
+        versionId: {type: string, format: uuid}
+        codigo: {type: string}
+        version: {type: string}
+        nombre: {type: string}
+        origen: {type: string}
+        huellaOrigen: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}
+        publicadaEn: {type: string, format: date-time}
+        disponibleNuevos: {type: boolean}
+    ReferenceElementSummary:
+      type: object
+      additionalProperties: false
+      required: [elementoId, versionId, tipo, codigo, titulo, grupo, referenciaOrigen]
+      properties:
+        elementoId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        tipo: {type: string, enum: [CONTROL, CLAUSULA]}
+        codigo: {type: string}
+        titulo: {type: string}
+        grupo: {type: string}
+        referenciaOrigen: {type: string}
+    ReferenceElement:
+      type: object
+      additionalProperties: false
+      required: [elementoId, versionId, tipo, codigo, titulo, grupo, referenciaOrigen, descripcion]
+      properties:
+        elementoId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        tipo: {type: string, enum: [CONTROL, CLAUSULA]}
+        codigo: {type: string}
+        titulo: {type: string}
+        grupo: {type: string}
+        referenciaOrigen: {type: string}
+        descripcion: {type: string}
+    ReferenceMethodVersion:
+      type: object
+      additionalProperties: false
+      required: [versionId, codigo, version, identificador, nombre, fundamento, origen, reglas, aprobadaEn, aprobadaPor, disponibleNuevos]
+      properties:
+        versionId: {type: string, format: uuid}
+        codigo: {type: string}
+        version: {type: string}
+        identificador: {type: string}
+        nombre: {type: string}
+        fundamento: {type: string}
+        origen: {type: string}
+        reglas: {type: object, additionalProperties: true}
+        aprobadaEn: {type: string, format: date}
+        aprobadaPor: {type: string}
+        disponibleNuevos: {type: boolean}
+    ReferenceCatalogPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ReferenceCatalogVersion'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ReferenceElementPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ReferenceElementSummary'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ReferenceMethodPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ReferenceMethodVersion'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     AssetValuationEntries:
       type: object
       additionalProperties: false

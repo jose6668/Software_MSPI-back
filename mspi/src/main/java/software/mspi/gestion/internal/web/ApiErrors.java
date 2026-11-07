@@ -26,6 +26,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.activos.api.CatalogFailure;
 import software.mspi.activos.api.ClassificationFailure;
+import software.mspi.catalogos.api.ReferenceNotFound;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
@@ -123,6 +124,9 @@ final class ApiErrors {
         }
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof ReferenceNotFound) {
+            return Problem.forStatus(HttpStatus.NOT_FOUND);
         }
         if (failure instanceof ClassificationFailure classification) {
             var fields = classification.fields().stream()

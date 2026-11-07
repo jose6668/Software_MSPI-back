@@ -72,6 +72,8 @@ class CompanyAuthorizationTests {
     private static final String PROCESSES = "/api/v1/empresas/{empresaId}/procesos";
     private static final String ASSETS = "/api/v1/empresas/{empresaId}/activos";
     private static final String VALUATIONS = ASSETS + "/{activoId}/clasificaciones";
+    private static final String CATALOGS = "/api/v1/empresas/{empresaId}/catalogos";
+    private static final String METHODOLOGIES = "/api/v1/empresas/{empresaId}/metodologias";
     private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
@@ -943,6 +945,132 @@ class CompanyAuthorizationTests {
     private static Map<String, Object> completeInputs(int confidentiality, int integrity, int availability) {
         return Map.of("confidencialidad", confidentiality, "integridad", integrity, "disponibilidad", availability,
                 "fundamento", "Fundamento ficticio de prueba", "contieneDatosPersonales", false);
+    }
+
+    @Test
+    void commonReferenceReadsRequireAnAuthorizedOperableMembership() throws Exception {
+        var aeAccount = account();
+        var gsAccount = account();
+        var auAccount = account();
+        var raAccount = account();
+        member(aeAccount, a(), "AE");
+        member(gsAccount, a(), "GS");
+        member(auAccount, a(), "AU");
+        member(raAccount, a(), "RA");
+        var ae = login(aeAccount);
+        var gs = login(gsAccount);
+        var au = login(auAccount);
+        var ra = login(raAccount);
+        mvc.perform(get(METHODOLOGIES, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(CATALOGS, a()).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(METHODOLOGIES, b()).session(gs)).andExpect(status().isForbidden());
+        mvc.perform(post(CATALOGS, a()).session(ae).with(csrf())).andExpect(status().isForbidden());
+
+        for (var reader : List.of(ae, gs, au)) {
+            var response = mvc.perform(get(METHODOLOGIES, a()).session(reader).param("codigo", "cid_max"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                    .andExpect(jsonPath("$.elementos[0].identificador").value("CID_MAX_V1"))
+                    .andExpect(jsonPath("$.elementos[0].reglas.valores[2]").value(5))
+                    .andExpect(jsonPath("$.elementos[0].reglas.agregacion").value("MAXIMO"))
+                    .andExpect(jsonPath("$.elementos[0].aprobadaEn").value("2026-11-06")).andReturn();
+            var version = mapper.readTree(response.getResponse().getContentAsByteArray()).path("elementos").get(0)
+                    .path("versionId").asString();
+            mvc.perform(get(METHODOLOGIES + "/{versionId}", a(), version).session(reader))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
+        }
+
+        fixture.metadata(fixture.first, "SUSPENDIDA", "4");
+        try {
+            mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
+        } finally {
+            fixture.metadata(fixture.first, "ACTIVA", "4");
+        }
+    }
+
+    @Test
+    void catalogPublicationKeepsOriginalReferencesAndHidesUnpublishedContent() throws Exception {
+        var reader = account();
+        member(reader, a(), "AU");
+        var session = login(reader);
+        UUID catalog = UUID.randomUUID();
+        UUID oldVersion = UUID.randomUUID();
+        UUID newVersion = UUID.randomUUID();
+        UUID oldElement = UUID.randomUUID();
+        UUID newElement = UUID.randomUUID();
+        String code = "PRUEBA-" + catalog;
+        sql("INSERT INTO comun.catalogos(id, codigo) VALUES (?, ?)", catalog, code);
+        stageCatalog(oldVersion, catalog, "Edición 1", "1");
+        stageCatalog(newVersion, catalog, "Edición 2", "2");
+        stageElement(oldElement, oldVersion, "C-1", "Primera descripción");
+        stageElement(newElement, newVersion, "C-1", "Descripción revisada con % literal");
+        String detail = CATALOGS + "/{versionId}/elementos/{elementoId}";
+        mvc.perform(get(detail, a(), newVersion, newElement).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(CATALOGS, a()).session(session).param("codigo", code))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(0));
+
+        sql("UPDATE comun.versiones_catalogo SET publicada_en = clock_timestamp() WHERE id IN (?, ?)", oldVersion, newVersion);
+        sql("UPDATE comun.versiones_catalogo SET retirada_en = clock_timestamp() WHERE id = ?", oldVersion);
+        mvc.perform(get(CATALOGS, a()).session(session).param("codigo", code).param("tamano", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hayMas").value(true))
+                .andExpect(jsonPath("$.elementos[0].disponibleNuevos").value(false));
+        mvc.perform(get(CATALOGS, a()).session(session).param("codigo", code).param("disponibleNuevos", "true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.elementos[0].versionId").value(newVersion.toString()));
+        mvc.perform(get(CATALOGS + "/{versionId}/elementos", a(), newVersion).session(session)
+                        .param("codigo", "c-1").param("tipo", "CONTROL").param("grupo", "TECNOLOGICO").param("texto", "%"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].elementoId").value(newElement.toString()))
+                .andExpect(jsonPath("$.elementos[0].descripcion").doesNotExist());
+        mvc.perform(get(detail, a(), oldVersion, oldElement).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.descripcion").value("Primera descripción"))
+                .andExpect(jsonPath("$.referenciaOrigen").value("Fixture!C16:F16"));
+        mvc.perform(get(detail, a(), newVersion, oldElement).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(detail, a(), newVersion, newElement).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.descripcion").value("Descripción revisada con % literal"));
+
+        assertSqlState(() -> sql("UPDATE comun.elementos_catalogo SET descripcion = 'Cambiada' WHERE id = ?", oldElement), "23514");
+        assertSqlState(() -> sql("DELETE FROM comun.elementos_catalogo WHERE id = ?", oldElement), "23514");
+        assertSqlState(() -> stageElement(UUID.randomUUID(), newVersion, "C-2", "Inyección"), "23514");
+        assertSqlState(() -> sql("UPDATE comun.versiones_catalogo SET retirada_en = NULL WHERE id = ?", oldVersion), "23514");
+        assertSqlState(() -> sql("UPDATE comun.catalogos SET codigo = 'Otro' WHERE id = ?", catalog), "23514");
+    }
+
+    @Test
+    void databaseRestrictsRuntimeToPublishedReadProjections() throws Exception {
+        try (var runtime = fixture.database.runtime(); var statement = runtime.createStatement()) {
+            try (var rows = statement.executeQuery("SELECT identificador FROM comun.metodologias_publicadas")) {
+                assertThat(rows.next()).isTrue();
+            }
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM comun.versiones_catalogo"), "42501");
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM comun.elementos_catalogo"), "42501");
+            assertSqlState(() -> statement.executeUpdate("UPDATE comun.versiones_metodologia SET nombre = 'Cambiada'"), "42501");
+            try (var grants = statement.executeQuery("""
+                    SELECT has_table_privilege('comun.metodologias_publicadas', 'INSERT,UPDATE,DELETE')
+                    """)) {
+                assertThat(grants.next()).isTrue();
+                assertThat(grants.getBoolean(1)).isFalse();
+            }
+        }
+        try (var tenant = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = tenant.createStatement()) {
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM comun.catalogos_publicados"), "42501");
+        }
+        assertSqlState(() -> sql("UPDATE comun.versiones_metodologia SET reglas = '{}' WHERE identificador = 'CID_MAX_V1'"),
+                "23514");
+    }
+
+    private void stageCatalog(UUID version, UUID catalog, String name, String label) throws SQLException {
+        sql("""
+                INSERT INTO comun.versiones_catalogo(id, catalogo_id, version, nombre, origen)
+                VALUES (?, ?, ?, ?, 'Fixture')
+                """, version, catalog, label, name);
+    }
+
+    private void stageElement(UUID element, UUID version, String code, String description) throws SQLException {
+        sql("""
+                INSERT INTO comun.elementos_catalogo(id, version_catalogo_id, tipo, codigo, titulo, descripcion,
+                    grupo, referencia_origen)
+                VALUES (?, ?, 'CONTROL', ?, 'Control de prueba', ?, 'TECNOLOGICO', 'Fixture!C16:F16')
+                """, element, version, code, description);
     }
 
     private Map<String, UUID> assetReferences(UUID company, MockHttpSession session) throws Exception {
