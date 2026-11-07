@@ -150,15 +150,15 @@ class TenantIsolationTests {
 
     @Test void rechecksSuspensionVersionAndAccessOnEachNewUnit() throws Exception {
         try {
-            fixture.metadata(fixture.first, "SUSPENDIDA", "5");
+            fixture.metadata(fixture.first, "SUSPENDIDA", "6");
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
             fixture.metadata(fixture.first, "ACTIVA", "999");
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
-            fixture.metadata(fixture.first, "ACTIVA", "5");
+            fixture.metadata(fixture.first, "ACTIVA", "6");
             fixture.grants.get(fixture.actor).remove(a());
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "5");
+            fixture.metadata(fixture.first, "ACTIVA", "6");
             fixture.grants.get(fixture.actor).add(a());
         }
         assertThat(value(a())).isEqualTo("A");
@@ -232,6 +232,8 @@ class TenantIsolationTests {
     @Test void rejectsMissingOwnerBeforeExecutingBusinessWorkAndRecoversAfterFailure() throws Exception {
         var invalid = fixture.create("unused", false);
         try (var connection = fixture.database.admin(); var statement = connection.createStatement()) {
+            // Deliberately corrupt a disposable schema to exercise the runtime owner check.
+            statement.execute("DELETE FROM " + invalid.scope().schema() + ".uso_evidencias");
             statement.execute("DELETE FROM " + invalid.scope().schema() + ".contexto_empresa");
         }
         var called = new AtomicBoolean();

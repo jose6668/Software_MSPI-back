@@ -142,6 +142,8 @@ APR-08 deja abierta la primera funcionalidad completa. La secuencia de trabajo p
 
 Las dependencias evitan ciclos: HU-025 puede comenzar con respuestas de evaluación de HU-017, sin exigir cierre HU-018; HU-019 incorpora después su destino de evidencia. HU-023 crea acciones; HU-024 completa ejecución y revisión. HU-022 cierra riesgos después de disponer de acciones resueltas. El orden numérico no obliga a implementar HU-022 antes de HU-024/025.
 
+Se adelanta [HU-025](hu/HU-025.md) con archivos para respuestas de evaluaciones. HU-018 requiere además resolver la aplicabilidad y la evidencia por criterio antes de habilitar el cierre.
+
 La escritura de auditoría, revisión esperada, autorización y pruebas de aislamiento pertenecen a cada HU que las requiera. HU-028 añade su consulta administrativa; no posterga la escritura del historial hasta esa etapa.
 
 ## 6. Decisiones pendientes y sus historias afectadas
@@ -157,7 +159,7 @@ La escritura de auditoría, revisión esperada, autorización y pruebas de aisla
 | Correo automático para invitaciones y enlace al correo verificado para recuperar acceso. Vigencia, límites de recuperación, remitente, relay y URLs requieren configuración de entorno | HU-009/010/012 |
 | Rúbricas, catálogo validado, N en cláusulas, evidencia y vigencia por criterio | HU-016 a HU-022 según comportamiento |
 | Contexto mínimo RA, criterios de entrega y evidencia exigida | HU-023/024 |
-| Almacenamiento privado, formatos, límite exacto, cuotas y corrección/retención | HU-025 y preparación operativa aplicable |
+| Archivos iniciales PDF, PNG y JPEG, 10 000 000 bytes por archivo y cuota obligatoria por empresa. Quedan por definir las cuotas de cada entorno, la corrección, la retención y las referencias admitidas por criterio | HU-025 y preparación operativa aplicable |
 | Infraestructura, coherencia de copias y objetivos operativos | HU-029 |
 
 No se habilitan cierres con criterios inventados. PHVA ponderado, mitigación automática, NIST independiente, importación Excel, reportes avanzados y registro público siguen fuera del alcance aprobado de v1.

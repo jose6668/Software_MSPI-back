@@ -944,6 +944,102 @@ paths:
                 $ref: '#/components/schemas/EvaluationFinding'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/evidencias:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+    get:
+      operationId: listarEvidenciasRespuesta
+      summary: Lista las evidencias disponibles de una respuesta
+      description: Requiere AE, GS o AU con acceso a la evaluación. El servicio de evidencias debe estar habilitado.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Metadatos de las evidencias disponibles, sin rutas físicas
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseEvidencePage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: cargarEvidenciaRespuesta
+      summary: Adjunta un archivo privado a una respuesta en borrador
+      description: Requiere AE o GS, CSRF, revisión vigente y cuota configurada. La carga exitosa incrementa la revisión de la evaluación.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo, revisionEsperada]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+                  description: PDF, PNG o JPEG de hasta 10 000 000 bytes.
+                revisionEsperada: {type: integer, format: int64, minimum: 0}
+                descripcion: {type: string, maxLength: 1000}
+      responses:
+        '201':
+          description: Evidencia disponible
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Location:
+              description: Ruta de descarga que exige autorización vigente.
+              schema: {type: string, format: uri-reference}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseEvidenceUpload'
+        '413':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/evidencias/{evidenciaId}/archivo:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+      - $ref: '#/components/parameters/ResponseEvidenceId'
+    get:
+      operationId: descargarEvidenciaRespuesta
+      summary: Descarga el archivo privado de una evidencia
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Descarga como adjunto del tipo detectado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Content-Disposition:
+              schema: {type: string}
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -1611,6 +1707,11 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ResponseEvidenceId:
+      name: evidenciaId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ReferenceVersionId:
       name: versionId
       in: path
@@ -1921,6 +2022,34 @@ components:
       required: [elementos, pagina, tamano, hayMas]
       properties:
         elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationFinding'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ResponseEvidence:
+      type: object
+      additionalProperties: false
+      required: [evidenciaId, nombreOriginal, tipoDetectado, tamanoBytes, descripcion, creadaPor, creadaEn]
+      properties:
+        evidenciaId: {type: string, format: uuid}
+        nombreOriginal: {type: string, maxLength: 255}
+        tipoDetectado: {type: string, enum: [application/pdf, image/png, image/jpeg]}
+        tamanoBytes: {type: integer, minimum: 1, maximum: 10000000}
+        descripcion: {type: [string, 'null'], maxLength: 1000}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+    ResponseEvidenceUpload:
+      type: object
+      additionalProperties: false
+      required: [evidencia, revisionEvaluacion]
+      properties:
+        evidencia: {$ref: '#/components/schemas/ResponseEvidence'}
+        revisionEvaluacion: {type: integer, format: int64, minimum: 1}
+    ResponseEvidencePage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ResponseEvidence'}}
         pagina: {type: integer, minimum: 0}
         tamano: {type: integer, minimum: 1, maximum: 100}
         hayMas: {type: boolean}

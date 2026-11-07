@@ -2,6 +2,7 @@ package software.mspi.evaluaciones.internal.persistence.tenant;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -146,6 +147,23 @@ final class JpaEvaluationDrafts implements EvaluationDrafts {
             evaluation.touch(now);
             record(scope, finding.id, "HALLAZGO_EVALUACION", "EDITAR", evaluation.state, evaluation.state);
             return finding.view(evaluation.revision);
+        });
+    }
+
+    @Override
+    public void requireReadableResponse(Scope scope, UUID evaluation, UUID response) {
+        read(scope, () -> findResponse(find(scope, evaluation, LockModeType.NONE), response));
+    }
+
+    @Override
+    public <T> Optional<T> attachEvidence(Scope scope, UUID evaluationId, UUID responseId, long revision,
+                                         Supplier<Optional<T>> publish) {
+        return write(scope, () -> {
+            var evaluation = editable(scope, evaluationId, revision);
+            findResponse(evaluation, responseId);
+            var published = publish.get();
+            published.ifPresent(evidence -> evaluation.touch(Instant.now()));
+            return published;
         });
     }
 

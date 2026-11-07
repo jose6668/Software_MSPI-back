@@ -118,13 +118,25 @@ public final class TenantRuntimeVerifier {
                     WHEN 'hallazgos_evaluacion' THEN has_table_privilege(c.oid, 'INSERT')
                         AND has_column_privilege(c.oid, 'descripcion', 'UPDATE')
                         AND NOT has_column_privilege(c.oid, 'respuesta_id', 'UPDATE')
+                    WHEN 'evidencias' THEN has_column_privilege(c.oid, 'id', 'INSERT')
+                        AND NOT has_column_privilege(c.oid, 'modalidad', 'INSERT')
+                        AND NOT has_column_privilege(c.oid, 'estado_carga', 'INSERT')
+                        AND has_column_privilege(c.oid, 'estado_carga', 'UPDATE')
+                        AND NOT EXISTS (
+                            SELECT 1 FROM pg_catalog.pg_attribute a
+                            WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                              AND a.attname <> 'estado_carga' AND has_column_privilege(c.oid, a.attnum, 'UPDATE')
+                        )
+                    WHEN 'uso_evidencias' THEN NOT has_any_column_privilege(c.oid, 'INSERT')
+                        AND has_column_privilege(c.oid, 'bytes_ocupados', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'empresa_id', 'UPDATE')
                     ELSE false END
                 """)) {
             statement.setString(1, scope.schema());
             statement.setString(2, scope.migrationRole());
             try (var rows = statement.executeQuery()) {
-                if (!rows.next() || rows.getInt(1) != 3) {
-                    throw new IllegalStateException("Permisos de evaluación empresarial incompatibles.");
+                if (!rows.next() || rows.getInt(1) != 5) {
+                    throw new IllegalStateException("Permisos de evaluación y evidencias incompatibles.");
                 }
             }
         }
