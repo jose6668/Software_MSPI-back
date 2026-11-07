@@ -246,7 +246,7 @@ class AccountRecoveryTests {
 
     private UUID company(String state) throws SQLException {
         UUID company = database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = ?, version_estructura = '6' WHERE id = ?", state, company);
+        sql("UPDATE comun.empresas SET estado = ?, version_estructura = '7' WHERE id = ?", state, company);
         return company;
     }
 

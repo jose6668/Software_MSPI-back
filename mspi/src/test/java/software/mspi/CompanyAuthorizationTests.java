@@ -134,7 +134,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "6");
+            fixture.metadata(fixture.third, "ACTIVA", "7");
         }
     }
 
@@ -177,13 +177,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "6");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "7");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "6");
+            fixture.metadata(fixture.first, "ACTIVA", "7");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -416,7 +416,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '6' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '7' WHERE id = ?", company);
         return company;
     }
 
@@ -999,11 +999,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "6");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "7");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "6");
+            fixture.metadata(fixture.first, "ACTIVA", "7");
         }
     }
 
@@ -1506,11 +1506,178 @@ class CompanyAuthorizationTests {
         }
     }
 
+    @Test
+    void closesF1OnlyAfterEvidenceReviewAndKeepsOriginalAndCorrectionIndependent() throws Exception {
+        var editor = account();
+        UUID responsible = member(editor, a(), "GS");
+        UUID foreignResponsible = member(editor, b(), "GS");
+        var session = login(editor);
+        var auditor = account();
+        member(auditor, a(), "AU");
+        var reader = login(auditor);
+        UUID catalog = f1Catalog();
+        UUID evaluation = createEvaluation(a(), session, responsible, catalog, method(a(), session, "EVALUACION_CONTROLES"));
+        var rows = evaluationResponses(a(), evaluation, session);
+        UUID positive = rows.get("P");
+        UUID clause = rows.get("4.1");
+
+        lifecycle(a(), evaluation, reader, "enviar-revision", 0, Map.of()).andExpect(status().isForbidden());
+        mvc.perform(post(EVALUATIONS + "/{evaluacionId}/enviar-revision", a(), evaluation).session(session)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"revisionEsperada\":0}"))
+                .andExpect(status().isForbidden());
+        lifecycle(a(), evaluation, session, "enviar-revision", 0, Map.of()).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.fields[0].code").value("APLICABILIDAD_PENDIENTE"));
+        lifecycle(a(), evaluation, session, "cerrar", 0, Map.of()).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ESTADO_EVALUACION_INCOMPATIBLE"));
+        setAnswer(a(), evaluation, positive, session, 0, scored(20)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, clause, session, 1, scored(0)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, rows.get("N"), session, 2,
+                Map.of("aplicabilidad", "NO_APLICA", "justificacionAplicabilidad", "Fuera del alcance justificado"))
+                .andExpect(status().isOk());
+        lifecycle(a(), evaluation, session, "enviar-revision", 3, Map.of()).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.fields[0].code").value("EVIDENCIA_REQUERIDA"));
+        byte[] png = image("png");
+        var uploaded = mvc.perform(evidenceUpload(a(), evaluation, positive, session, 3, "prueba.png", png)
+                .with(csrf().asHeader())).andExpect(status().isCreated()).andReturn();
+        UUID evidence = UUID.fromString(mapper.readTree(uploaded.getResponse().getContentAsByteArray())
+                .path("evidencia").path("evidenciaId").asString());
+        var proofs = Map.of("evidencias", Map.of(positive.toString(), evidence.toString()));
+        lifecycle(a(), evaluation, session, "enviar-revision", 4,
+                Map.of("evidencias", Map.of(clause.toString(), evidence.toString()))).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.fields[?(@.code == 'EVIDENCIA_NO_VALIDA')]").isNotEmpty());
+        lifecycle(a(), evaluation, session, "enviar-revision", 4, proofs).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("EN_REVISION")).andExpect(jsonPath("$.revision").value(5));
+        setAnswer(a(), evaluation, positive, session, 5, scored(80)).andExpect(status().isConflict());
+        lifecycle(a(), evaluation, session, "devolver", 5, Map.of("motivo", " ")).andExpect(status().isBadRequest());
+        lifecycle(a(), evaluation, session, "devolver", 5, Map.of("motivo", "Ampliar el fundamento"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("BORRADOR"));
+        lifecycle(a(), evaluation, session, "enviar-revision", 6, proofs).andExpect(status().isOk());
+
+        Path file = evidenceVolume.root.resolve(a().toString()).resolve(evidence.toString()).resolve("contenido");
+        byte[] corrupt = png.clone();
+        corrupt[corrupt.length - 1] ^= 1;
+        Files.write(file, corrupt);
+        try {
+            lifecycle(a(), evaluation, session, "cerrar", 7, proofs).andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.fields[0].code").value("EVIDENCIA_NO_VALIDA"));
+        } finally {
+            Files.write(file, png);
+        }
+        lifecycle(a(), evaluation, session, "cerrar", 7, proofs).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("CERRADA")).andExpect(jsonPath("$.revision").value(8))
+                .andExpect(jsonPath("$.cerradaPor").value(editor.id().toString()));
+        String closed = mvc.perform(get(EVALUATIONS + "/{evaluacionId}/cierre", a(), evaluation).session(reader))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.instantanea.politica").value("F1-1_EVIDENCIA_V1"))
+                .andExpect(jsonPath("$.instantanea.resultados.controlesGlobal.puntaje").value(20))
+                .andExpect(jsonPath("$.instantanea.evidencias['" + positive + "'].evidenciaId").value(evidence.toString()))
+                .andReturn().getResponse().getContentAsString();
+        evaluationResults(a(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(8)).andExpect(jsonPath("$.controlesGlobal.puntaje").value(20));
+        mvc.perform(get(EVALUATIONS + "/{evaluacionId}/cierre", b(), evaluation).session(session))
+                .andExpect(status().isNotFound());
+        setAnswer(a(), evaluation, positive, session, 8, scored(80)).andExpect(status().isConflict());
+        String schema = fixture.first.scope().schema();
+        assertSqlState(() -> sql("UPDATE " + schema + ".evaluaciones SET revision = 9 WHERE id = ?", evaluation), "23514");
+        assertThat(count("SELECT count(*) FROM " + schema + ".eventos_actividad WHERE objeto_id = ?"
+                + " AND accion = 'DEVOLVER' AND motivo = 'Ampliar el fundamento'", evaluation)).isOne();
+
+        lifecycle(a(), evaluation, session, "correcciones", 8, Map.of("motivo", "Rectificación",
+                "responsableId", foreignResponsible)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RESPONSABLE_NO_DISPONIBLE"));
+        var correctionInput = Map.of("motivo", "Rectificación", "responsableId", responsible);
+        UUID correction = id(lifecycle(a(), evaluation, session, "correcciones", 8, correctionInput)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.evaluacionAnteriorId").value(evaluation.toString()))
+                .andExpect(jsonPath("$.versionCatalogoId").value(catalog.toString())).andReturn(), "evaluacionId");
+        lifecycle(a(), evaluation, session, "correcciones", 8, correctionInput).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CORRECCION_EXISTENTE"));
+        var inherited = evaluationResponses(a(), correction, session);
+        var reused = Map.of("evidencias", Map.of(inherited.get("P").toString(), evidence.toString()));
+        lifecycle(a(), correction, session, "enviar-revision", 0, reused).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.fields[?(@.code == 'RESPUESTA_HEREDADA_PENDIENTE')]")
+                        .value(org.hamcrest.Matchers.hasSize(3)));
+        confirmInherited(a(), correction, inherited.get("P"), session, 0).andExpect(status().isOk())
+                .andExpect(jsonPath("$.respuestaAnteriorId").value(positive.toString()))
+                .andExpect(jsonPath("$.heredadaConfirmada").value(true));
+        confirmInherited(a(), correction, inherited.get("N"), session, 1).andExpect(status().isOk());
+        setAnswer(a(), correction, inherited.get("4.1"), session, 2, scored(0)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.heredadaConfirmada").value(true));
+        lifecycle(a(), correction, session, "enviar-revision", 3, reused).andExpect(status().isOk());
+        lifecycle(a(), correction, session, "cerrar", 4, reused).andExpect(status().isOk());
+        mvc.perform(get(EVALUATIONS + "/{evaluacionId}/cierre", a(), evaluation).session(reader))
+                .andExpect(status().isOk()).andExpect(content().json(closed));
+    }
+
+    @Test
+    void evaluationClosureRequiresPublishedPolicyAndAllowsOnlyOneConcurrentDecision() throws Exception {
+        var editor = account();
+        UUID responsible = member(editor, b(), "AE");
+        var session = login(editor);
+        UUID method = method(b(), session, "EVALUACION_CONTROLES");
+        UUID other = createEvaluation(b(), session, responsible,
+                evaluationCatalog(new EvaluationItem("X", "CONTROL", "DOM_A")), method);
+        lifecycle(b(), other, session, "enviar-revision", 0, Map.of()).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("POLITICA_EVALUACION_NO_DISPONIBLE"));
+
+        UUID evaluation = createEvaluation(b(), session, responsible, f1Catalog(), method);
+        var rows = evaluationResponses(b(), evaluation, session);
+        setAnswer(b(), evaluation, rows.get("P"), session, 0, scored(0)).andExpect(status().isOk());
+        setAnswer(b(), evaluation, rows.get("N"), session, 1, scored(0)).andExpect(status().isOk());
+        setAnswer(b(), evaluation, rows.get("4.1"), session, 2, scored(0)).andExpect(status().isOk());
+        lifecycle(b(), evaluation, session, "enviar-revision", 3, Map.of()).andExpect(status().isOk());
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Integer> close = () -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return lifecycle(b(), evaluation, session, "cerrar", 4, Map.of()).andReturn().getResponse().getStatus();
+            };
+            var first = executor.submit(close);
+            var second = executor.submit(close);
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+            assertThat(count("SELECT count(*) FROM " + fixture.second.scope().schema()
+                    + ".eventos_actividad WHERE objeto_id = ? AND accion = 'CERRAR'", evaluation)).isOne();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private ResultActions lifecycle(UUID company, UUID evaluation, MockHttpSession session, String command,
+                                    long revision, Map<String, ?> fields) throws Exception {
+        var input = new HashMap<String, Object>(fields);
+        input.put("revisionEsperada", revision);
+        return catalogPost(EVALUATIONS + "/{evaluacionId}/" + command, company, session, input, evaluation);
+    }
+
+    private ResultActions confirmInherited(UUID company, UUID evaluation, UUID response, MockHttpSession session,
+                                            long revision) throws Exception {
+        return catalogPost(EVALUATION_RESPONSES + "/{respuestaId}/confirmar-heredada", company, session,
+                Map.of("revisionEsperada", revision), evaluation, response);
+    }
+
+    private UUID f1Catalog() throws SQLException {
+        UUID catalog = UUID.fromString("18f10000-0000-4000-8000-000000000001");
+        UUID version = UUID.fromString("18f10000-0000-4000-8000-000000000002");
+        if (count("SELECT count(*) FROM comun.versiones_catalogo WHERE id = ?", version) == 0) {
+            publishEvaluationCatalog(catalog, version, "MSPI_DIAGNOSTICO_F1", "F1-1",
+                    new EvaluationItem("P", "CONTROL", "DOM_A"),
+                    new EvaluationItem("N", "CONTROL", "DOM_A"),
+                    new EvaluationItem("4.1", "CLAUSULA", "CLAUSULA_4"));
+        }
+        return version;
+    }
+
     private UUID evaluationCatalog(EvaluationItem... items) throws SQLException {
         UUID catalog = UUID.randomUUID();
         UUID version = UUID.randomUUID();
-        sql("INSERT INTO comun.catalogos(id, codigo) VALUES (?, ?)", catalog, "EVALUACION-" + catalog);
-        stageCatalog(version, catalog, "Edición de prueba", "1");
+        publishEvaluationCatalog(catalog, version, "EVALUACION-" + catalog, "1", items);
+        return version;
+    }
+
+    private void publishEvaluationCatalog(UUID catalog, UUID version, String code, String label, EvaluationItem... items)
+            throws SQLException {
+        sql("INSERT INTO comun.catalogos(id, codigo) VALUES (?, ?)", catalog, code);
+        stageCatalog(version, catalog, "Edición de prueba", label);
         for (var item : items) {
             sql("""
                     INSERT INTO comun.elementos_catalogo(id, version_catalogo_id, tipo, codigo, titulo, descripcion,
@@ -1519,7 +1686,6 @@ class CompanyAuthorizationTests {
                     """, UUID.randomUUID(), version, item.type(), item.code(), item.group());
         }
         sql("UPDATE comun.versiones_catalogo SET publicada_en = clock_timestamp() WHERE id = ?", version);
-        return version;
     }
 
     private UUID method(UUID company, MockHttpSession session, String code) throws Exception {

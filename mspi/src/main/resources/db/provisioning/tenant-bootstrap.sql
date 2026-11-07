@@ -39,6 +39,8 @@ BEGIN
     EXECUTE format('GRANT REFERENCES (id) ON TABLE comun.versiones_metodologia TO %I', migrator);
     EXECUTE format('GRANT REFERENCES (version_catalogo_id, id) ON TABLE comun.elementos_catalogo TO %I', migrator);
     EXECUTE format('GRANT EXECUTE ON FUNCTION comun.contexto_nueva_evaluacion(uuid,uuid,uuid,uuid) TO %I', migrator);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION comun.validar_responsable_correccion(uuid,uuid) TO %I', migrator);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION comun.puede_revisar_evaluacion(uuid,uuid,uuid,uuid,boolean) TO %I', migrator);
 
     IF EXISTS (
         SELECT 1 FROM pg_catalog.pg_roles r

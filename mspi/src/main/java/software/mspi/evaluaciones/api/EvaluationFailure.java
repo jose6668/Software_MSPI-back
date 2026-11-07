@@ -4,7 +4,9 @@ import java.util.List;
 
 public final class EvaluationFailure extends RuntimeException {
 
-    public enum Reason { MISSING, NOT_EDITABLE, RESPONSIBLE, VERSION, INVALID_ANSWER }
+    public enum Reason {
+        MISSING, NOT_EDITABLE, RESPONSIBLE, VERSION, INVALID_ANSWER, STATE, POLICY, NOT_INHERITED, CORRECTION_EXISTS
+    }
 
     private final Reason reason;
     private final List<String> fields;

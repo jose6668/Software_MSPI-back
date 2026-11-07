@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 import software.mspi.evaluaciones.api.EvaluationDrafts.Applicability;
 import software.mspi.evaluaciones.api.EvaluationDrafts.ElementType;
@@ -17,7 +18,7 @@ final class EvaluationResults {
 
     private EvaluationResults() {}
 
-    static Results calculate(EvaluationRecord evaluation, List<Object[]> rows) {
+    static Results calculate(UUID evaluation, long revision, List<Object[]> rows) {
         var global = new Group();
         var domains = new TreeMap<String, Group>();
         var clauses = new TreeMap<String, Group>();
@@ -33,7 +34,7 @@ final class EvaluationResults {
                 clauses.computeIfAbsent(group, ignored -> new Group()).add(applicability, score);
             }
         }
-        return new Results(evaluation.id, evaluation.revision, global.totals(), summarize(domains), summarize(clauses));
+        return new Results(evaluation, revision, global.totals(), summarize(domains), summarize(clauses));
     }
 
     private static List<GroupResult> summarize(Map<String, Group> groups) {

@@ -33,6 +33,7 @@ import software.mspi.catalogos.api.ReferenceNotFound;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
+import software.mspi.evaluaciones.api.EvaluationBlocked;
 import software.mspi.evaluaciones.api.EvaluationFailure;
 import software.mspi.evidencias.api.EvidenceFailure;
 import software.mspi.identidad.api.LoginLimitException;
@@ -139,6 +140,12 @@ final class ApiErrors {
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
         }
+        if (failure instanceof EvaluationBlocked blocked) {
+            var issues = blocked.issues().stream().map(issue -> new Field(
+                    issue.respuestaId() == null ? issue.campo() : "respuestas." + issue.respuestaId() + "." + issue.campo(),
+                    issue.codigo(), issue.detalle())).toList();
+            return new Problem(HttpStatus.CONFLICT, "EVALUACION_INCOMPLETA", blocked.getMessage(), issues);
+        }
         if (failure instanceof EvaluationFailure evaluation) {
             return switch (evaluation.reason()) {
                 case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
@@ -149,6 +156,14 @@ final class ApiErrors {
                 case VERSION -> new Problem(HttpStatus.CONFLICT, "VERSION_NO_DISPONIBLE",
                         "Seleccione versiones publicadas, compatibles y disponibles para nuevos usos.");
                 case INVALID_ANSWER -> validation(evaluation.fields().stream().map(ApiErrors::invalidField).toList());
+                case STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_EVALUACION_INCOMPATIBLE",
+                        "La evaluación no admite esta transición en su estado vigente.");
+                case POLICY -> new Problem(HttpStatus.CONFLICT, "POLITICA_EVALUACION_NO_DISPONIBLE",
+                        "La versión del catálogo y la metodología requieren una política de cierre aprobada.");
+                case NOT_INHERITED -> new Problem(HttpStatus.CONFLICT, "RESPUESTA_HEREDADA_NO_PENDIENTE",
+                        "La respuesta no tiene una confirmación heredada pendiente.");
+                case CORRECTION_EXISTS -> new Problem(HttpStatus.CONFLICT, "CORRECCION_EXISTENTE",
+                        "La evaluación ya tiene una corrección vinculada.");
             };
         }
         if (failure instanceof EvidenceFailure evidence) {

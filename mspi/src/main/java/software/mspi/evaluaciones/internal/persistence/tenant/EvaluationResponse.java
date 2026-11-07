@@ -38,6 +38,8 @@ class EvaluationResponse {
     @Column(name = "fundamento") String rationale;
     @Column(name = "actualizada_por") UUID updatedBy;
     @Column(name = "actualizada_en") Instant updatedAt;
+    @Column(name = "respuesta_anterior", insertable = false, updatable = false) UUID previousResponse;
+    @Column(name = "heredada_confirmada", insertable = false) boolean inheritedConfirmed;
 
     protected EvaluationResponse() {}
 
@@ -60,12 +62,18 @@ class EvaluationResponse {
         justification = answer.justificacionAplicabilidad();
         score = answer.calificacion();
         rationale = answer.fundamento();
+        confirm(actor, now);
+    }
+
+    void confirm(UUID actor, Instant now) {
+        inheritedConfirmed = true;
         updatedBy = actor;
         updatedAt = now;
     }
 
     Response view(long revision) {
         return new Response(id, element, version, type, code, title, groupCode,
-                new Answer(applicability, justification, score, rationale), revision, updatedBy, updatedAt);
+                new Answer(applicability, justification, score, rationale), revision, updatedBy, updatedAt,
+                previousResponse, inheritedConfirmed);
     }
 }

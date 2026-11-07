@@ -32,6 +32,10 @@ class EvaluationRecord {
     @Column(name = "creada_por", updatable = false) UUID createdBy;
     @Column(name = "creada_en", updatable = false) Instant createdAt;
     @Column(name = "actualizada_en") Instant updatedAt;
+    @Column(name = "evaluacion_anterior", insertable = false, updatable = false) UUID previousEvaluation;
+    @Column(name = "motivo_revision", insertable = false, updatable = false) String correctionReason;
+    @Column(name = "cerrada_por", insertable = false, updatable = false) UUID closedBy;
+    @Column(name = "cerrada_en", insertable = false, updatable = false) Instant closedAt;
 
     protected EvaluationRecord() {}
 
@@ -54,6 +58,15 @@ class EvaluationRecord {
         if (!"BORRADOR".equals(state)) {
             throw new EvaluationFailure(EvaluationFailure.Reason.NOT_EDITABLE);
         }
+        requireRevision(expected);
+    }
+
+    void requireState(String required, long expected) {
+        if (!required.equals(state)) throw new EvaluationFailure(EvaluationFailure.Reason.STATE);
+        requireRevision(expected);
+    }
+
+    private void requireRevision(long expected) {
         if (revision != expected) {
             throw new OptimisticLockingFailureException("Revisión desactualizada.");
         }
@@ -67,6 +80,6 @@ class EvaluationRecord {
 
     Evaluation view() {
         return new Evaluation(id, name, date, scope, responsible, catalogVersion, methodologyVersion, state, revision,
-                createdBy, createdAt, updatedAt);
+                createdBy, createdAt, updatedAt, previousEvaluation, correctionReason, closedBy, closedAt);
     }
 }

@@ -103,8 +103,12 @@ record EvidenceContent(byte[] bytes, String type, String digest) {
     }
 
     static String sha256(byte[] bytes) {
+        return HexFormat.of().formatHex(newSha256().digest(bytes));
+    }
+
+    static MessageDigest newSha256() {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }

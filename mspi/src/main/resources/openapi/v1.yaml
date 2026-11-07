@@ -838,6 +838,179 @@ paths:
                 $ref: '#/components/schemas/EvaluationResponse'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/enviar-revision:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    post:
+      operationId: enviarEvaluacionARevision
+      summary: Envía una evaluación completa a revisión
+      description: AE o GS con CSRF. Selecciona un adjunto íntegro por respuesta con nota positiva según F1-1.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewEvaluation'
+      responses:
+        '200':
+          description: Envía una evaluación completa a revisión
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/devolver:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    post:
+      operationId: devolverEvaluacion
+      summary: Devuelve la evaluación a borrador
+      description: AE o GS con CSRF. Registra el motivo de devolución en el historial.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReturnEvaluation'
+      responses:
+        '200':
+          description: Devuelve la evaluación a borrador
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/cerrar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    post:
+      operationId: cerrarEvaluacion
+      summary: Cierra la evaluación en revisión
+      description: AE o GS con CSRF. La selección declara cuáles adjuntos revisó como pertinentes. La API revalida la integridad y congela el diagnóstico.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewEvaluation'
+      responses:
+        '200':
+          description: Cierra la evaluación en revisión
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/cierre:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    get:
+      operationId: consultarCierreEvaluacion
+      summary: Consulta la instantánea de cierre
+      description: AE, GS o AU con acceso a la evaluación cerrada.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta la instantánea de cierre
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationClosure'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/correcciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    post:
+      operationId: corregirEvaluacion
+      summary: Crea un borrador vinculado a la evaluación cerrada
+      description: AE o GS con CSRF. Conserva el original y exige un responsable local vigente. Las respuestas heredadas quedan por confirmar.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CorrectEvaluation'
+      responses:
+        '201':
+          description: Crea un borrador vinculado a la evaluación cerrada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/confirmar-heredada:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+    post:
+      operationId: confirmarRespuestaHeredada
+      summary: Confirma una respuesta heredada sin cambiar su contenido
+      description: AE o GS con CSRF. Requiere borrador y revisión vigente.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRevision'
+      responses:
+        '200':
+          description: Confirma una respuesta heredada sin cambiar su contenido
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/resultados:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -1890,7 +2063,7 @@ components:
     EvaluationDraft:
       type: object
       additionalProperties: false
-      required: [evaluacionId, nombre, fechaEvaluacion, alcance, responsableId, versionCatalogoId, versionMetodologiaId, estado, revision, creadaPor, creadaEn, actualizadaEn]
+      required: [evaluacionId, nombre, fechaEvaluacion, alcance, responsableId, versionCatalogoId, versionMetodologiaId, estado, revision, creadaPor, creadaEn, actualizadaEn, evaluacionAnteriorId, motivoRevision, cerradaPor, cerradaEn]
       properties:
         evaluacionId: {type: string, format: uuid}
         nombre: {type: string, minLength: 1, maxLength: 200}
@@ -1904,6 +2077,72 @@ components:
         creadaPor: {type: string, format: uuid}
         creadaEn: {type: string, format: date-time}
         actualizadaEn: {type: string, format: date-time}
+        evaluacionAnteriorId: {type: [string, 'null'], format: uuid}
+        motivoRevision: {type: [string, 'null'], maxLength: 2000}
+        cerradaPor: {type: [string, 'null'], format: uuid}
+        cerradaEn: {type: [string, 'null'], format: date-time}
+    EvaluationRevision:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+    ReviewEvaluation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        evidencias:
+          type: object
+          description: Mapa de UUID de respuesta a UUID de adjunto. Una respuesta aplicable con nota positiva requiere un adjunto. En el cierre representa la selección revisada.
+          maxProperties: 116
+          propertyNames: {format: uuid}
+          additionalProperties: {type: string, format: uuid}
+    ReturnEvaluation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    CorrectEvaluation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, responsableId, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        responsableId: {type: string, format: uuid}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    EvaluationClosure:
+      type: object
+      additionalProperties: false
+      required: [evaluacionId, versionCatalogoId, versionMetodologiaId, cerradaPor, cerradaEn, instantanea]
+      properties:
+        evaluacionId: {type: string, format: uuid}
+        versionCatalogoId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+        cerradaPor: {type: string, format: uuid}
+        cerradaEn: {type: string, format: date-time}
+        instantanea:
+          type: object
+          additionalProperties: false
+          required: [politica, resultados, evidencias]
+          properties:
+            politica: {type: string}
+            resultados: {$ref: '#/components/schemas/EvaluationResults'}
+            evidencias:
+              type: object
+              propertyNames: {format: uuid}
+              additionalProperties:
+                type: object
+                additionalProperties: false
+                required: [evidenciaId, evaluacionOrigenId, respuestaOrigenId, sha256]
+                properties:
+                  evidenciaId: {type: string, format: uuid}
+                  evaluacionOrigenId: {type: string, format: uuid}
+                  respuestaOrigenId: {type: string, format: uuid}
+                  sha256: {type: string, pattern: '^[0-9a-f]{64}$'}
     EditEvaluationResponse:
       type: object
       additionalProperties: false
@@ -1926,7 +2165,7 @@ components:
     EvaluationResponse:
       type: object
       additionalProperties: false
-      required: [respuestaId, elementoId, versionCatalogoId, tipo, codigo, titulo, grupo, respuesta, revisionEvaluacion, actualizadaPor, actualizadaEn]
+      required: [respuestaId, elementoId, versionCatalogoId, tipo, codigo, titulo, grupo, respuesta, revisionEvaluacion, actualizadaPor, actualizadaEn, respuestaAnteriorId, heredadaConfirmada]
       properties:
         respuestaId: {type: string, format: uuid}
         elementoId: {type: string, format: uuid}
@@ -1939,6 +2178,8 @@ components:
         revisionEvaluacion: {type: integer, format: int64, minimum: 0}
         actualizadaPor: {type: [string, 'null'], format: uuid}
         actualizadaEn: {type: [string, 'null'], format: date-time}
+        respuestaAnteriorId: {type: [string, 'null'], format: uuid}
+        heredadaConfirmada: {type: boolean}
     EditEvaluationFinding:
       type: object
       additionalProperties: false
