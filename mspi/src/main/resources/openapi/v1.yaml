@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.2.0'
+  version: '1.3.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -198,6 +198,98 @@ paths:
           $ref: '#/components/responses/Problem'
         '500':
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/invitaciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    post:
+      operationId: emitirInvitacion
+      summary: Emite y envía por correo una invitación de la empresa
+      description: Requiere AE de la empresa y la función de invitaciones habilitada.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueInvitation'
+      responses:
+        '201':
+          description: Invitación enviada al relay SMTP
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuedInvitation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/invitaciones/{invitacionId}/revocar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - name: invitacionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: revocarInvitacion
+      summary: Revoca una invitación pendiente
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204':
+          description: Invitación revocada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/invitaciones/aceptar:
+    post:
+      operationId: aceptarInvitacion
+      summary: Acepta con la cuenta verificada del destinatario
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitation'
+      responses:
+        '201':
+          $ref: '#/components/responses/AcceptedInvitation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/invitaciones/alta:
+    post:
+      operationId: aceptarInvitacionConAlta
+      summary: Crea cuenta y membresía con una invitación vigente
+      description: La cookie y el token CSRF se obtienen con una sesión anónima. El enlace verifica el correo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollInvitation'
+      responses:
+        '201':
+          $ref: '#/components/responses/AcceptedInvitation'
+        default:
+          $ref: '#/components/responses/Problem'
 components:
   securitySchemes:
     sessionCookie:
@@ -206,6 +298,13 @@ components:
       name: MSPISESSION
       description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
   parameters:
+    InvitationCompany:
+      name: empresaId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     CsrfHeader:
       in: header
       name: X-CSRF-TOKEN
@@ -221,6 +320,15 @@ components:
         type: string
         format: uuid
   responses:
+    AcceptedInvitation:
+      description: Membresía creada con los roles de la invitación
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AcceptedInvitation'
     CurrentSession:
       description: Identidad y vencimiento absoluto de la sesión vigente
       headers:
@@ -240,6 +348,81 @@ components:
           schema:
             $ref: '#/components/schemas/ApiProblem'
   schemas:
+    OfferedRoles:
+      type: array
+      minItems: 1
+      maxItems: 4
+      uniqueItems: true
+      items:
+        type: string
+        enum: [AE, GS, RA, AU]
+    IssueInvitation:
+      type: object
+      additionalProperties: false
+      required: [correo, roles]
+      properties:
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+        roles:
+          $ref: '#/components/schemas/OfferedRoles'
+    IssuedInvitation:
+      type: object
+      additionalProperties: false
+      required: [invitacionId, venceEn]
+      properties:
+        invitacionId:
+          type: string
+          format: uuid
+        venceEn:
+          type: string
+          format: date-time
+    InvitationToken:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{43}$'
+      writeOnly: true
+    AcceptInvitation:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          $ref: '#/components/schemas/InvitationToken'
+    EnrollInvitation:
+      type: object
+      additionalProperties: false
+      required: [token, nombreVisible, contrasena]
+      properties:
+        token:
+          $ref: '#/components/schemas/InvitationToken'
+        nombreVisible:
+          type: string
+          minLength: 1
+          maxLength: 150
+        contrasena:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 1024
+          description: La longitud mínima se configura en el entorno.
+    AcceptedInvitation:
+      type: object
+      additionalProperties: false
+      required: [empresaId, membresiaId, usuarioId, roles]
+      properties:
+        empresaId:
+          type: string
+          format: uuid
+        membresiaId:
+          type: string
+          format: uuid
+        usuarioId:
+          type: string
+          format: uuid
+        roles:
+          $ref: '#/components/schemas/OfferedRoles'
     CompanyMembership:
       type: object
       additionalProperties: false

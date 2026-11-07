@@ -2,7 +2,6 @@ package software.mspi.identidad.internal;
 
 import java.time.Clock;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
 
@@ -12,6 +11,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import software.mspi.identidad.api.EmailKey;
 import software.mspi.identidad.api.LoginLimitException;
 import software.mspi.identidad.api.SessionIdentity;
 
@@ -41,7 +41,7 @@ final class LocalAccountProvider implements AuthenticationProvider {
             throw new LoginLimitException();
         }
         try {
-            String account = request.getName().toLowerCase(Locale.ROOT);
+            String account = EmailKey.normalize(request.getName());
             String address = request.getDetails() instanceof String remote ? remote : "unknown";
             attempts.reserve(account, address);
             return verify(account, (String) request.getCredentials());

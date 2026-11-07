@@ -9,6 +9,14 @@ server:
         secure: true
         same-site: lax
 spring:
+  mail:
+    properties:
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 5000
+      "[mail.smtp.writetimeout]": 5000
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      "[mail.smtp.ssl.checkserveridentity]": true
   application:
     name: mspi
   jackson:
@@ -29,7 +37,13 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: none
+management:
+  health:
+    mail:
+      enabled: false
 mspi:
+  invitations:
+    enabled: false
   identity:
     session-lifetime: 8h
     attempt-window: 1m
