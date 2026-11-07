@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-014 quedaron integradas mediante PR #1 a #14. **HU-015** incorpora la clasificación C/I/D con la metodología aprobada y el catálogo de datos personales confirmado para captura. [Ficha de HU-015](hu/HU-015.md).
+HU-001 a HU-015 quedaron integradas mediante PR #1 a #15. **HU-016** incorpora la consulta versionada de catálogos y metodologías, con F1 como primera edición interna. [Ficha de HU-016](hu/HU-016.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.

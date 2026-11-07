@@ -76,6 +76,10 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, ApiAssetClassificationController.CLASSIFICATIONS,
                                 ApiAssetClassificationController.CONFIRM).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiAssetClassificationController.CLASSIFICATION).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiReferenceCatalogController.CATALOGS,
+                                ApiReferenceCatalogController.CATALOG, ApiReferenceCatalogController.ELEMENTS,
+                                ApiReferenceCatalogController.ELEMENT, ApiReferenceCatalogController.METHODS,
+                                ApiReferenceCatalogController.METHOD).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
