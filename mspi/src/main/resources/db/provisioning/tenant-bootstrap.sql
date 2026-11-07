@@ -35,6 +35,10 @@ BEGIN
         RAISE EXCEPTION 'Recursos de aprovisionamiento incompletos o en conflicto.';
     END IF;
     EXECUTE format('GRANT REFERENCES (empresa_id, id) ON TABLE comun.membresias TO %I', migrator);
+    EXECUTE format('GRANT REFERENCES (id) ON TABLE comun.versiones_catalogo TO %I', migrator);
+    EXECUTE format('GRANT REFERENCES (id) ON TABLE comun.versiones_metodologia TO %I', migrator);
+    EXECUTE format('GRANT REFERENCES (version_catalogo_id, id) ON TABLE comun.elementos_catalogo TO %I', migrator);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION comun.contexto_nueva_evaluacion(uuid,uuid,uuid,uuid) TO %I', migrator);
 
     IF EXISTS (
         SELECT 1 FROM pg_catalog.pg_roles r

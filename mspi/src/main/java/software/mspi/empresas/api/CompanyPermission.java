@@ -13,6 +13,8 @@ public enum CompanyPermission {
     READ_CONTEXT(AE, GS, RA, AU), // PER-05/06, minimal projection
     READ_PROCESS_CATALOG(AE, GS, AU), // PER-12
     READ_REFERENCE_CATALOGS(AE, GS, AU), // PER-18
+    READ_EVALUATIONS(AE, GS, AU),        // PER-19
+    EDIT_EVALUATION_DRAFT(AE, GS),       // PER-20
     EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15

@@ -74,6 +74,8 @@ class CompanyAuthorizationTests {
     private static final String VALUATIONS = ASSETS + "/{activoId}/clasificaciones";
     private static final String CATALOGS = "/api/v1/empresas/{empresaId}/catalogos";
     private static final String METHODOLOGIES = "/api/v1/empresas/{empresaId}/metodologias";
+    private static final String EVALUATIONS = "/api/v1/empresas/{empresaId}/evaluaciones";
+    private static final String EVALUATION_RESPONSES = EVALUATIONS + "/{evaluacionId}/respuestas";
     private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
@@ -114,7 +116,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "4");
+            fixture.metadata(fixture.third, "ACTIVA", "5");
         }
     }
 
@@ -157,13 +159,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "4");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "5");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "4");
+            fixture.metadata(fixture.first, "ACTIVA", "5");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -396,7 +398,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '4' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '5' WHERE id = ?", company);
         return company;
     }
 
@@ -979,11 +981,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "4");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "5");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "4");
+            fixture.metadata(fixture.first, "ACTIVA", "5");
         }
     }
 
@@ -1072,6 +1074,259 @@ class CompanyAuthorizationTests {
                 VALUES (?, ?, 'CONTROL', ?, 'Control de prueba', ?, 'TECNOLOGICO', 'Fixture!C16:F16')
                 """, element, version, code, description);
     }
+
+    @Test
+    void evaluationUsesEqualWeightPerControlAndKeepsClauseResultsSeparate() throws Exception {
+        var editor = account();
+        UUID responsible = member(editor, a(), "GS");
+        var session = login(editor);
+        UUID method = method(a(), session, "EVALUACION_CONTROLES");
+        UUID version = evaluationCatalog(
+                new EvaluationItem("A", "CONTROL", "DOM_A"),
+                new EvaluationItem("B1", "CONTROL", "DOM_B"),
+                new EvaluationItem("B2", "CONTROL", "DOM_B"),
+                new EvaluationItem("B3", "CONTROL", "DOM_B"),
+                new EvaluationItem("4.1", "CLAUSULA", "CLAUSULA_4"));
+        UUID evaluation = createEvaluation(a(), session, responsible, version, method);
+        var responses = evaluationResponses(a(), evaluation, session);
+        evaluationResults(a(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.estado").value("PENDIENTE"))
+                .andExpect(jsonPath("$.controlesGlobal.sinDecidir").value(4))
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").isEmpty())
+                .andExpect(jsonPath("$.controlesGlobal.avance").value(0));
+        setAnswer(a(), evaluation, responses.get("A"), session, 0, scored(100)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, responses.get("B1"), session, 1, scored(0)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, responses.get("B2"), session, 2, scored(0)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, responses.get("B3"), session, 3, scored(0)).andExpect(status().isOk());
+        setAnswer(a(), evaluation, responses.get("4.1"), session, 4, scored(80)).andExpect(status().isOk());
+
+        evaluationResults(a(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").value(25))
+                .andExpect(jsonPath("$.controlesGlobal.avance").value(100))
+                .andExpect(jsonPath("$.controlesGlobal.evaluados").value(4))
+                .andExpect(jsonPath("$.dominios[0].resultado.puntaje").value(100))
+                .andExpect(jsonPath("$.dominios[1].resultado.puntaje").value(0))
+                .andExpect(jsonPath("$.clausulas[0].resultado.puntaje").value(80))
+                .andExpect(jsonPath("$.phva").doesNotExist());
+
+        UUID second = createEvaluation(a(), session, responsible, version, method);
+        evaluationResults(a(), second, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.sinDecidir").value(4))
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").isEmpty());
+        evaluationResults(a(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").value(25));
+    }
+
+    @Test
+    void evaluationDistinguishesZeroPendingAndJustifiedExclusion() throws Exception {
+        var editor = account();
+        UUID responsible = member(editor, b(), "AE");
+        var session = login(editor);
+        UUID version = evaluationCatalog(new EvaluationItem("C1", "CONTROL", "DOM"),
+                new EvaluationItem("C2", "CONTROL", "DOM"), new EvaluationItem("C3", "CONTROL", "DOM"),
+                new EvaluationItem("C4", "CONTROL", "DOM"), new EvaluationItem("5.1", "CLAUSULA", "CLAUSULA_5"));
+        UUID evaluation = createEvaluation(b(), session, responsible, version, method(b(), session, "EVALUACION_CONTROLES"));
+        var rows = evaluationResponses(b(), evaluation, session);
+        var excluded = Map.of("aplicabilidad", "NO_APLICA", "justificacionAplicabilidad", "Fuera del alcance descrito");
+        setAnswer(b(), evaluation, rows.get("5.1"), session, 0, excluded).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fields[0].field").value("aplicabilidad"));
+        setAnswer(b(), evaluation, rows.get("C4"), session, 0, Map.of("aplicabilidad", "NO_APLICA"))
+                .andExpect(status().isBadRequest());
+        setAnswer(b(), evaluation, rows.get("C4"), session, 0, scored(50)).andExpect(status().isBadRequest());
+        setAnswer(b(), evaluation, rows.get("C4"), session, 0, Map.of("aplicabilidad", "APLICA", "calificacion", 0))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields[0].field").value("fundamento"));
+
+        setAnswer(b(), evaluation, rows.get("C1"), session, 0, scored(100)).andExpect(status().isOk());
+        setAnswer(b(), evaluation, rows.get("C2"), session, 1, scored(60)).andExpect(status().isOk());
+        setAnswer(b(), evaluation, rows.get("C3"), session, 2, Map.of("aplicabilidad", "APLICA"))
+                .andExpect(status().isOk());
+        setAnswer(b(), evaluation, rows.get("C4"), session, 3, excluded).andExpect(status().isOk())
+                .andExpect(jsonPath("$.respuesta.calificacion").isEmpty());
+        evaluationResults(b(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").value(80))
+                .andExpect(jsonPath("$.controlesGlobal.avance").value(66.67))
+                .andExpect(jsonPath("$.controlesGlobal.pendientes").value(1))
+                .andExpect(jsonPath("$.controlesGlobal.noAplican").value(1))
+                .andExpect(jsonPath("$.controlesGlobal.estado").value("PROVISIONAL"));
+
+        setAnswer(b(), evaluation, rows.get("C3"), session, 4, Map.of("aplicabilidad", "SIN_DECIDIR"))
+                .andExpect(status().isOk());
+        evaluationResults(b(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.avance").value(66.67))
+                .andExpect(jsonPath("$.controlesGlobal.sinDecidir").value(1))
+                .andExpect(jsonPath("$.controlesGlobal.pendientes").value(0));
+        for (int i = 1; i <= 3; i++) {
+            setAnswer(b(), evaluation, rows.get("C" + i), session, 4 + i, excluded).andExpect(status().isOk());
+        }
+        evaluationResults(b(), evaluation, session).andExpect(status().isOk())
+                .andExpect(jsonPath("$.controlesGlobal.estado").value("NO_APLICA"))
+                .andExpect(jsonPath("$.controlesGlobal.puntaje").isEmpty())
+                .andExpect(jsonPath("$.controlesGlobal.avance").isEmpty());
+    }
+
+    @Test
+    void evaluationsEnforceLocalResponsibleFixedVersionsAndReadPermissions() throws Exception {
+        var editor = account();
+        var auditor = account();
+        var ra = account();
+        UUID local = member(editor, a(), "GS");
+        UUID foreign = member(editor, b(), "AE");
+        UUID reader = member(auditor, a(), "AU");
+        member(ra, a(), "RA");
+        var session = login(editor);
+        var auSession = login(auditor);
+        var raSession = login(ra);
+        UUID method = method(a(), session, "EVALUACION_CONTROLES");
+        UUID version = evaluationCatalog(new EvaluationItem("REF", "CONTROL", "DOM"));
+        var path = EVALUATIONS + "/{evaluacionId}";
+        catalogPost(EVALUATIONS, a(), auSession, evaluationInput(local, version, method)).andExpect(status().isForbidden());
+        mvc.perform(post(EVALUATIONS, a()).session(session).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(evaluationInput(local, version, method))))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALIDO"));
+        for (UUID invalid : List.of(foreign, reader)) {
+            catalogPost(EVALUATIONS, a(), session, evaluationInput(invalid, version, method))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("RESPONSABLE_NO_DISPONIBLE"));
+        }
+        catalogPost(EVALUATIONS, a(), session, evaluationInput(local, version, method(a(), session, "CID_MAX")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VERSION_NO_DISPONIBLE"));
+        UUID evaluation = createEvaluation(a(), session, local, version, method);
+        UUID response = evaluationResponses(a(), evaluation, session).get("REF");
+        UUID foreignEvaluation = createEvaluation(b(), session, foreign, version, method);
+        mvc.perform(get(path, a(), evaluation).session(auSession)).andExpect(status().isOk());
+        mvc.perform(get(path, a(), evaluation).session(raSession)).andExpect(status().isForbidden());
+        mvc.perform(get(path, a(), foreignEvaluation).session(session)).andExpect(status().isNotFound());
+        setAnswer(b(), foreignEvaluation, response, session, 0, scored(100)).andExpect(status().isNotFound());
+
+        UUID otherEdition = evaluationCatalog(new EvaluationItem("REF", "CONTROL", "DOM"));
+        assertSqlState(() -> sql("""
+                INSERT INTO %s.respuestas_evaluacion(id, empresa_id, evaluacion_id, version_catalogo_id,
+                    elemento_id, tipo, codigo, titulo, grupo)
+                SELECT ?, ?, ?, version_catalogo_id, id, tipo, codigo, titulo, grupo
+                FROM comun.elementos_catalogo WHERE version_catalogo_id = ?
+                """.formatted(fixture.first.scope().schema()), UUID.randomUUID(), a(), evaluation, otherEdition), "23503");
+        sql("UPDATE comun.versiones_catalogo SET retirada_en = clock_timestamp() WHERE id = ?", version);
+        catalogPost(EVALUATIONS, a(), session, evaluationInput(local, version, method))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VERSION_NO_DISPONIBLE"));
+        setAnswer(a(), evaluation, response, session, 0, scored(100)).andExpect(status().isOk());
+        mvc.perform(get(path, a(), evaluation).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.versionCatalogoId").value(version.toString()));
+    }
+
+    @Test
+    void evaluationSerializesEditsAndBindsFindingsToTheirOwnResponse() throws Exception {
+        var editor = account();
+        UUID responsible = member(editor, a(), "AE");
+        var session = login(editor);
+        UUID version = evaluationCatalog(new EvaluationItem("F1", "CONTROL", "DOM"),
+                new EvaluationItem("F2", "CONTROL", "DOM"));
+        UUID evaluation = createEvaluation(a(), session, responsible, version, method(a(), session, "EVALUACION_CONTROLES"));
+        var rows = evaluationResponses(a(), evaluation, session);
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return setAnswer(a(), evaluation, rows.get("F1"), session, 0, scored(20)).andReturn().getResponse().getStatus();
+            });
+            var second = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return setAnswer(a(), evaluation, rows.get("F2"), session, 0, scored(40)).andReturn().getResponse().getStatus();
+            });
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+        String findings = EVALUATION_RESPONSES + "/{respuestaId}/hallazgos";
+        UUID firstResponse = rows.get("F1");
+        var created = catalogPost(findings, a(), session,
+                Map.of("revisionEsperada", 1, "descripcionBrecha", "Brecha ficticia"), evaluation, firstResponse)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.revisionEvaluacion").value(2)).andReturn();
+        UUID finding = id(created, "hallazgoId");
+        var update = Map.of("revisionEsperada", 2, "descripcionBrecha", "Brecha revisada", "recomendacion", "Documentar");
+        mvc.perform(put(findings + "/{hallazgoId}", a(), evaluation, rows.get("F2"), finding).session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(update)))
+                .andExpect(status().isNotFound());
+        mvc.perform(put(findings + "/{hallazgoId}", a(), evaluation, firstResponse, finding).session(session).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(update)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revisionEvaluacion").value(3));
+        mvc.perform(get(findings, a(), evaluation, firstResponse).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].hallazgo.recomendacion").value("Documentar"));
+
+        String schema = fixture.first.scope().schema();
+        sql("UPDATE " + schema + ".evaluaciones SET estado = 'EN_REVISION' WHERE id = ?", evaluation);
+        setAnswer(a(), evaluation, firstResponse, session, 3, scored(60)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EVALUACION_NO_EDITABLE"));
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE evaluaciones SET estado = 'CERRADA'"), "42501");
+            assertSqlState(() -> statement.executeUpdate("UPDATE respuestas_evaluacion SET fundamento = 'alterado' WHERE id = '"
+                    + firstResponse + "'"), "23514");
+        }
+    }
+
+    private UUID evaluationCatalog(EvaluationItem... items) throws SQLException {
+        UUID catalog = UUID.randomUUID();
+        UUID version = UUID.randomUUID();
+        sql("INSERT INTO comun.catalogos(id, codigo) VALUES (?, ?)", catalog, "EVALUACION-" + catalog);
+        stageCatalog(version, catalog, "Edición de prueba", "1");
+        for (var item : items) {
+            sql("""
+                    INSERT INTO comun.elementos_catalogo(id, version_catalogo_id, tipo, codigo, titulo, descripcion,
+                        grupo, referencia_origen)
+                    VALUES (?, ?, ?, ?, 'Elemento de prueba', 'Descripción de prueba', ?, 'Fixture')
+                    """, UUID.randomUUID(), version, item.type(), item.code(), item.group());
+        }
+        sql("UPDATE comun.versiones_catalogo SET publicada_en = clock_timestamp() WHERE id = ?", version);
+        return version;
+    }
+
+    private UUID method(UUID company, MockHttpSession session, String code) throws Exception {
+        var result = mvc.perform(get(METHODOLOGIES, company).session(session).param("codigo", code))
+                .andExpect(status().isOk()).andReturn();
+        return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray()).path("elementos")
+                .get(0).path("versionId").asString());
+    }
+
+    private UUID createEvaluation(UUID company, MockHttpSession session, UUID responsible, UUID catalog, UUID method)
+            throws Exception {
+        return id(catalogPost(EVALUATIONS, company, session, evaluationInput(responsible, catalog, method))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("BORRADOR"))
+                .andReturn(), "evaluacionId");
+    }
+
+    private static Map<String, Object> evaluationInput(UUID responsible, UUID catalog, UUID method) {
+        return Map.of("nombre", "Diagnóstico ficticio", "fechaEvaluacion", "2026-11-07", "alcance", "Área de prueba",
+                "responsableId", responsible, "versionCatalogoId", catalog, "versionMetodologiaId", method);
+    }
+
+    private Map<String, UUID> evaluationResponses(UUID company, UUID evaluation, MockHttpSession session) throws Exception {
+        var result = mvc.perform(get(EVALUATION_RESPONSES, company, evaluation).session(session).param("tamano", "100"))
+                .andExpect(status().isOk()).andReturn();
+        var rows = new HashMap<String, UUID>();
+        mapper.readTree(result.getResponse().getContentAsByteArray()).path("elementos").forEach(row ->
+                rows.put(row.path("codigo").asString(), UUID.fromString(row.path("respuestaId").asString())));
+        return rows;
+    }
+
+    private ResultActions setAnswer(UUID company, UUID evaluation, UUID response, MockHttpSession session,
+                                    long revision, Map<String, ?> answer) throws Exception {
+        var input = new HashMap<String, Object>(answer);
+        input.put("revisionEsperada", revision);
+        return mvc.perform(put(EVALUATION_RESPONSES + "/{respuestaId}", company, evaluation, response)
+                .session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(input)));
+    }
+
+    private ResultActions evaluationResults(UUID company, UUID evaluation, MockHttpSession session) throws Exception {
+        return mvc.perform(get(EVALUATIONS + "/{evaluacionId}/resultados", company, evaluation).session(session));
+    }
+
+    private static Map<String, Object> scored(int score) {
+        return Map.of("aplicabilidad", "APLICA", "calificacion", score, "fundamento", "Fundamento ficticio");
+    }
+
+    record EvaluationItem(String code, String type, String group) {}
 
     private Map<String, UUID> assetReferences(UUID company, MockHttpSession session) throws Exception {
         var process = catalogPost(PROCESSES, company, session, Map.of("nombre", "Proceso de inventario"))

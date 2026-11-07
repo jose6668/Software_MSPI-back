@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.10.0'
+  version: '1.11.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -708,6 +708,242 @@ paths:
                 $ref: '#/components/schemas/ReferenceMethodVersion'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarEvaluaciones
+      summary: Lista evaluaciones locales
+      description: Requiere AE, GS o AU de la empresa operable.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista evaluaciones locales
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearEvaluacion
+      summary: Crea una evaluación independiente en borrador
+      description: Requiere AE o GS, CSRF y revisión vigente cuando se modifica un borrador. Fija el alcance y el conjunto de elementos de la edición elegida.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEvaluationDraft'
+      responses:
+        '201':
+          description: Crea una evaluación independiente en borrador
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    get:
+      operationId: consultarEvaluacion
+      summary: Consulta una evaluación local
+      description: Requiere AE, GS o AU de la empresa operable.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta una evaluación local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationDraft'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    get:
+      operationId: listarRespuestasEvaluacion
+      summary: Lista las respuestas de la evaluación
+      description: Requiere AE, GS o AU de la empresa operable. Admite filtros por tipo y grupo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/ReferenceType'
+        - $ref: '#/components/parameters/ReferenceGroup'
+      responses:
+        '200':
+          description: Lista las respuestas de la evaluación
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponsePage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+    put:
+      operationId: editarRespuestaEvaluacion
+      summary: Diligencia una respuesta del borrador
+      description: Requiere AE o GS, CSRF y revisión vigente cuando se modifica un borrador. La nota exige fundamento. No aplica se admite para controles con justificación.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditEvaluationResponse'
+      responses:
+        '200':
+          description: Diligencia una respuesta del borrador
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/resultados:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+    get:
+      operationId: consultarResultadosEvaluacion
+      summary: Consulta puntaje, avance y pendientes
+      description: Requiere AE, GS o AU de la empresa operable. El resultado global se calcula por control evaluado. Las cláusulas se muestran por separado.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta puntaje, avance y pendientes
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationResults'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/hallazgos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+    get:
+      operationId: listarHallazgosEvaluacion
+      summary: Lista hallazgos vinculados a una respuesta
+      description: Requiere AE, GS o AU de la empresa operable.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista hallazgos vinculados a una respuesta
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationFindingPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearHallazgoEvaluacion
+      summary: Registra un hallazgo de evaluación
+      description: Requiere AE o GS, CSRF y revisión vigente cuando se modifica un borrador.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditEvaluationFinding'
+      responses:
+        '201':
+          description: Registra un hallazgo de evaluación
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationFinding'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/hallazgos/{hallazgoId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/EvaluationId'
+      - $ref: '#/components/parameters/EvaluationResponseId'
+      - $ref: '#/components/parameters/EvaluationFindingId'
+    put:
+      operationId: editarHallazgoEvaluacion
+      summary: Edita un hallazgo del borrador
+      description: Requiere AE o GS, CSRF y revisión vigente cuando se modifica un borrador.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditEvaluationFinding'
+      responses:
+        '200':
+          description: Edita un hallazgo del borrador
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationFinding'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -1360,6 +1596,21 @@ components:
       name: MSPISESSION
       description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
   parameters:
+    EvaluationId:
+      name: evaluacionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    EvaluationResponseId:
+      name: respuestaId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    EvaluationFindingId:
+      name: hallazgoId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ReferenceVersionId:
       name: versionId
       in: path
@@ -1524,6 +1775,155 @@ components:
               revisionEsperada: {type: integer, format: int64, minimum: 1}
               motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    CreateEvaluationDraft:
+      type: object
+      additionalProperties: false
+      required: [nombre, fechaEvaluacion, alcance, responsableId, versionCatalogoId, versionMetodologiaId]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        fechaEvaluacion: {type: string, format: date}
+        alcance: {type: string, minLength: 1}
+        responsableId: {type: string, format: uuid}
+        versionCatalogoId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+    EvaluationDraft:
+      type: object
+      additionalProperties: false
+      required: [evaluacionId, nombre, fechaEvaluacion, alcance, responsableId, versionCatalogoId, versionMetodologiaId, estado, revision, creadaPor, creadaEn, actualizadaEn]
+      properties:
+        evaluacionId: {type: string, format: uuid}
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        fechaEvaluacion: {type: string, format: date}
+        alcance: {type: string, minLength: 1}
+        responsableId: {type: string, format: uuid}
+        versionCatalogoId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+        estado: {type: string, enum: [BORRADOR, EN_REVISION, CERRADA]}
+        revision: {type: integer, format: int64, minimum: 0}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+        actualizadaEn: {type: string, format: date-time}
+    EditEvaluationResponse:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, aplicabilidad]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        aplicabilidad: {type: string, enum: [SIN_DECIDIR, APLICA, NO_APLICA]}
+        justificacionAplicabilidad: {type: [string, 'null'], maxLength: 2000}
+        calificacion: {type: [integer, 'null'], enum: [0, 20, 40, 60, 80, 100, null]}
+        fundamento: {type: [string, 'null']}
+    EvaluationAnswer:
+      type: object
+      additionalProperties: false
+      required: [aplicabilidad, justificacionAplicabilidad, calificacion, fundamento]
+      properties:
+        aplicabilidad: {type: string, enum: [SIN_DECIDIR, APLICA, NO_APLICA]}
+        justificacionAplicabilidad: {type: [string, 'null'], maxLength: 2000}
+        calificacion: {type: [integer, 'null'], enum: [0, 20, 40, 60, 80, 100, null]}
+        fundamento: {type: [string, 'null']}
+    EvaluationResponse:
+      type: object
+      additionalProperties: false
+      required: [respuestaId, elementoId, versionCatalogoId, tipo, codigo, titulo, grupo, respuesta, revisionEvaluacion, actualizadaPor, actualizadaEn]
+      properties:
+        respuestaId: {type: string, format: uuid}
+        elementoId: {type: string, format: uuid}
+        versionCatalogoId: {type: string, format: uuid}
+        tipo: {type: string, enum: [CONTROL, CLAUSULA]}
+        codigo: {type: string}
+        titulo: {type: string}
+        grupo: {type: string}
+        respuesta: {$ref: '#/components/schemas/EvaluationAnswer'}
+        revisionEvaluacion: {type: integer, format: int64, minimum: 0}
+        actualizadaPor: {type: [string, 'null'], format: uuid}
+        actualizadaEn: {type: [string, 'null'], format: date-time}
+    EditEvaluationFinding:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, descripcionBrecha]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        descripcionBrecha: {type: string, minLength: 1}
+        recomendacion: {type: [string, 'null']}
+    EvaluationGap:
+      type: object
+      additionalProperties: false
+      required: [descripcionBrecha, recomendacion]
+      properties:
+        descripcionBrecha: {type: string, minLength: 1}
+        recomendacion: {type: [string, 'null']}
+    EvaluationFinding:
+      type: object
+      additionalProperties: false
+      required: [hallazgoId, respuestaId, hallazgo, revisionEvaluacion, creadaPor, creadaEn, actualizadaPor, actualizadaEn]
+      properties:
+        hallazgoId: {type: string, format: uuid}
+        respuestaId: {type: string, format: uuid}
+        hallazgo: {$ref: '#/components/schemas/EvaluationGap'}
+        revisionEvaluacion: {type: integer, format: int64, minimum: 0}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+        actualizadaPor: {type: string, format: uuid}
+        actualizadaEn: {type: string, format: date-time}
+    EvaluationTotals:
+      type: object
+      additionalProperties: false
+      required: [total, aplicables, evaluados, pendientes, sinDecidir, noAplican, puntaje, avance, estado]
+      properties:
+        total: {type: integer, format: int64, minimum: 0}
+        aplicables: {type: integer, format: int64, minimum: 0}
+        evaluados: {type: integer, format: int64, minimum: 0}
+        pendientes: {type: integer, format: int64, minimum: 0}
+        sinDecidir: {type: integer, format: int64, minimum: 0}
+        noAplican: {type: integer, format: int64, minimum: 0}
+        puntaje: {type: [number, 'null'], minimum: 0, maximum: 100}
+        avance: {type: [number, 'null'], minimum: 0, maximum: 100}
+        estado: {type: string, enum: [SIN_ELEMENTOS, NO_APLICA, PENDIENTE, PROVISIONAL, CALCULADO]}
+    EvaluationGroupResult:
+      type: object
+      additionalProperties: false
+      required: [grupo, resultado]
+      properties:
+        grupo: {type: string}
+        resultado: {$ref: '#/components/schemas/EvaluationTotals'}
+    EvaluationResults:
+      type: object
+      additionalProperties: false
+      required: [evaluacionId, revision, controlesGlobal, dominios, clausulas]
+      properties:
+        evaluacionId: {type: string, format: uuid}
+        revision: {type: integer, format: int64, minimum: 0}
+        controlesGlobal: {$ref: '#/components/schemas/EvaluationTotals'}
+        dominios: {type: array, items: {$ref: '#/components/schemas/EvaluationGroupResult'}}
+        clausulas: {type: array, items: {$ref: '#/components/schemas/EvaluationGroupResult'}}
+    EvaluationPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationDraft'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    EvaluationResponsePage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationResponse'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    EvaluationFindingPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationFinding'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     ReferenceCatalogVersion:
       type: object
       additionalProperties: false
