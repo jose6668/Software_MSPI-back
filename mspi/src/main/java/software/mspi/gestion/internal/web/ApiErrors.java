@@ -24,6 +24,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
+import software.mspi.activos.api.CatalogFailure;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
@@ -121,6 +122,15 @@ final class ApiErrors {
         }
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof CatalogFailure catalog) {
+            return switch (catalog.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case REFERENCE -> new Problem(HttpStatus.CONFLICT, "REFERENCIA_NO_DISPONIBLE",
+                        "La referencia no está disponible para esta operación.");
+                case ARCHIVED -> new Problem(HttpStatus.CONFLICT, "REGISTRO_ARCHIVADO",
+                        "El registro archivado no admite cambios.");
+            };
         }
         if (failure instanceof RecoveryFailure recovery) {
             return switch (recovery.reason()) {

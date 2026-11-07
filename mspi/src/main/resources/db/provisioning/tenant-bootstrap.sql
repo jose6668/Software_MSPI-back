@@ -6,20 +6,22 @@ DECLARE
     tenant_schema text := 'emp_' || suffix;
     migrator text := 'mspi_mig_' || suffix;
     runtime text := 'mspi_run_' || suffix;
+    upgrading boolean := coalesce(current_setting('mspi.upgrade_tenant', true) = 'true', false);
     role_count integer;
     schema_owner text;
 BEGIN
     PERFORM 1 FROM comun.empresas
-     WHERE id = company AND esquema_interno = tenant_schema AND estado = 'EN_PREPARACION'
+     WHERE id = company AND esquema_interno = tenant_schema
+       AND estado = CASE WHEN upgrading THEN 'SUSPENDIDA' ELSE 'EN_PREPARACION' END
      FOR UPDATE;
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'La empresa debe estar reservada y en preparación.';
+        RAISE EXCEPTION 'La empresa no está en el estado requerido para la operación técnica.';
     END IF;
 
     SELECT count(*) INTO role_count FROM pg_catalog.pg_roles WHERE rolname IN (migrator, runtime);
     SELECT pg_get_userbyid(nspowner) INTO schema_owner FROM pg_catalog.pg_namespace WHERE nspname = tenant_schema;
 
-    IF role_count = 0 AND schema_owner IS NULL THEN
+    IF NOT upgrading AND role_count = 0 AND schema_owner IS NULL THEN
         EXECUTE format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', migrator);
         EXECUTE format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS', runtime);
         EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I, %I', current_database(), migrator, runtime);
@@ -32,6 +34,7 @@ BEGIN
     ELSIF role_count <> 2 OR schema_owner IS DISTINCT FROM migrator THEN
         RAISE EXCEPTION 'Recursos de aprovisionamiento incompletos o en conflicto.';
     END IF;
+    EXECUTE format('GRANT REFERENCES (empresa_id, id) ON TABLE comun.membresias TO %I', migrator);
 
     IF EXISTS (
         SELECT 1 FROM pg_catalog.pg_roles r
@@ -52,6 +55,8 @@ BEGIN
       OR has_schema_privilege(runtime, 'comun', 'USAGE')
       OR has_table_privilege(migrator, 'comun.empresas', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
       OR has_any_column_privilege(migrator, 'comun.empresas', 'SELECT,INSERT,UPDATE')
+      OR has_table_privilege(migrator, 'comun.membresias', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+      OR has_any_column_privilege(migrator, 'comun.membresias', 'SELECT,INSERT,UPDATE')
     THEN
         RAISE EXCEPTION 'Los roles empresariales exceden su ámbito o tienen permisos incompletos.';
     END IF;

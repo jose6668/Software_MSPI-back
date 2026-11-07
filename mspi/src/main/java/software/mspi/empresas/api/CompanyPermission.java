@@ -11,6 +11,8 @@ import static software.mspi.empresas.api.CompanyRole.RA;
 /** Initial role grants. Object and transition rules must also be checked by each operation. */
 public enum CompanyPermission {
     READ_CONTEXT(AE, GS, RA, AU), // PER-05/06, minimal projection
+    READ_PROCESS_CATALOG(AE, GS, AU), // PER-12
+    EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15
     READ_ACTIONS(AE, GS, AU),     // PER-29, general access. Assigned RA views are separate.
