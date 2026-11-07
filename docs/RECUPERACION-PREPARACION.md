@@ -54,8 +54,8 @@ Los fallos transaccionales de las migraciones empresariales se pueden reintentar
 
 1. Suspender la empresa en plataforma y esperar a que terminen las operaciones iniciadas. El comando de actualización rechaza una empresa activa.
 2. Usar las credenciales de operador, migrador y runtime descritas arriba. Cambiar los argumentos del lanzador a `upgrade <empresa-uuid>`. El comando mantiene el bloqueo técnico global y la suspensión. En caso de error, consultar el intento, corregir la causa y repetir con el mismo UUID.
-3. Con la versión vigente publicada tras la verificación, consultar la revisión en plataforma y reactivar con el backend compatible. En HU-015 se exige V4. Programar la transición de las demás empresas para conservar su disponibilidad.
+3. Con la versión vigente publicada tras la verificación, consultar la revisión en plataforma y reactivar con el backend compatible. En HU-017 se exige V5 empresarial después de aplicar V11 común. Programar la transición de las demás empresas para conservar su disponibilidad.
 
-El rol migrador recibe solo `REFERENCES (empresa_id, id)` sobre `comun.membresias` para crear la relación de pertenencia. El runtime empresarial conserva acceso a su propio esquema. [Catálogo de procesos](hu/HU-013.md) · [Inventario de activos](hu/HU-014.md).
+El rol migrador recibe permisos `REFERENCES` sobre las claves comunes de membresías y versiones. Para inicializar evaluaciones puede ejecutar una función común que verifica la identidad técnica y las referencias locales. El runtime empresarial conserva acceso a su propio esquema. [Borradores de evaluación](hu/HU-017.md).
 
 El comando legado `tenant <uuid>` ejecuta Flyway para un esquema ya aprovisionado. Para el alta técnica recuperable se usa `prepare`, que registra el intento y verifica la versión. Para usar manualmente `tenant.sql`, conservar `tenant-bootstrap.sql` a su lado.

@@ -30,6 +30,7 @@ import software.mspi.catalogos.api.ReferenceNotFound;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
+import software.mspi.evaluaciones.api.EvaluationFailure;
 import software.mspi.identidad.api.LoginLimitException;
 import software.mspi.identidad.api.RecoveryFailure;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
@@ -124,6 +125,18 @@ final class ApiErrors {
         }
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof EvaluationFailure evaluation) {
+            return switch (evaluation.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case NOT_EDITABLE -> new Problem(HttpStatus.CONFLICT, "EVALUACION_NO_EDITABLE",
+                        "Solo una evaluación en borrador admite cambios.");
+                case RESPONSIBLE -> new Problem(HttpStatus.CONFLICT, "RESPONSABLE_NO_DISPONIBLE",
+                        "El responsable debe tener una membresía activa de la empresa con rol AE o GS.");
+                case VERSION -> new Problem(HttpStatus.CONFLICT, "VERSION_NO_DISPONIBLE",
+                        "Seleccione versiones publicadas, compatibles y disponibles para nuevos usos.");
+                case INVALID_ANSWER -> validation(evaluation.fields().stream().map(ApiErrors::invalidField).toList());
+            };
         }
         if (failure instanceof ReferenceNotFound) {
             return Problem.forStatus(HttpStatus.NOT_FOUND);

@@ -53,6 +53,7 @@ public final class TenantRuntimeVerifier {
                 }
             }
             verifyCatalogGrants(connection, scope);
+            verifyEvaluationGrants(connection, scope);
         }
     }
 
@@ -93,6 +94,37 @@ public final class TenantRuntimeVerifier {
             try (var rows = statement.executeQuery()) {
                 if (!rows.next() || !rows.getBoolean(1)) {
                     throw new IllegalStateException("Permisos de historial empresarial incompatibles.");
+                }
+            }
+        }
+    }
+
+    private static void verifyEvaluationGrants(Connection connection, MigrationScope scope) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ? AND c.relkind = 'r' AND pg_get_userbyid(c.relowner) = ?
+                  AND has_table_privilege(c.oid, 'SELECT')
+                  AND NOT has_table_privilege(c.oid, 'DELETE,TRUNCATE,TRIGGER,REFERENCES')
+                  AND NOT has_table_privilege(c.oid, 'UPDATE')
+                  AND CASE c.relname
+                    WHEN 'evaluaciones' THEN has_column_privilege(c.oid, 'id', 'INSERT')
+                        AND has_column_privilege(c.oid, 'revision', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'estado', 'INSERT,UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'version_catalogo_id', 'UPDATE')
+                    WHEN 'respuestas_evaluacion' THEN NOT has_any_column_privilege(c.oid, 'INSERT')
+                        AND has_column_privilege(c.oid, 'calificacion', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'elemento_id', 'UPDATE')
+                    WHEN 'hallazgos_evaluacion' THEN has_table_privilege(c.oid, 'INSERT')
+                        AND has_column_privilege(c.oid, 'descripcion', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'respuesta_id', 'UPDATE')
+                    ELSE false END
+                """)) {
+            statement.setString(1, scope.schema());
+            statement.setString(2, scope.migrationRole());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next() || rows.getInt(1) != 3) {
+                    throw new IllegalStateException("Permisos de evaluación empresarial incompatibles.");
                 }
             }
         }

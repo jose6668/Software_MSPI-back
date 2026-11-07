@@ -80,6 +80,13 @@ class ApiSecurityConfiguration {
                                 ApiReferenceCatalogController.CATALOG, ApiReferenceCatalogController.ELEMENTS,
                                 ApiReferenceCatalogController.ELEMENT, ApiReferenceCatalogController.METHODS,
                                 ApiReferenceCatalogController.METHOD).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiEvaluationController.EVALUATIONS,
+                                ApiEvaluationController.EVALUATION, ApiEvaluationController.RESPONSES,
+                                ApiEvaluationController.RESULTS, ApiEvaluationController.FINDINGS).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiEvaluationController.EVALUATIONS,
+                                ApiEvaluationController.FINDINGS).authenticated()
+                        .requestMatchers(HttpMethod.PUT, ApiEvaluationController.RESPONSE,
+                                ApiEvaluationController.FINDING).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
