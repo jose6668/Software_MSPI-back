@@ -50,12 +50,12 @@ Ante un fallo, el intento registra `FALLIDO` y el paso alcanzado. La empresa que
 
 Los fallos transaccionales de las migraciones empresariales se pueden reintentar después de corregir su causa. Un checksum alterado, permisos excesivos o recursos incompatibles requieren diagnóstico y corrección por el operador. Ensayar cambios y recuperación en un entorno separado antes de usarlos con datos operativos.
 
-## Actualizar una empresa existente a V2
+## Actualizar una empresa existente a la versión vigente
 
 1. Suspender la empresa en plataforma y esperar a que terminen las operaciones iniciadas. El comando de actualización rechaza una empresa activa.
 2. Usar las credenciales de operador, migrador y runtime descritas arriba. Cambiar los argumentos del lanzador a `upgrade <empresa-uuid>`. El comando mantiene el bloqueo técnico global y la suspensión. En caso de error, consultar el intento, corregir la causa y repetir con el mismo UUID.
-3. Con la versión 2 publicada tras la verificación, consultar la revisión vigente en plataforma. Reactivar mediante la API de plataforma del backend compatible con V2. Programar la transición del resto de las empresas, ya que el backend exige la versión empresarial vigente.
+3. Con la versión vigente publicada tras la verificación, consultar la revisión en plataforma y reactivar con el backend compatible. En HU-014 se exige V3. Programar la transición de las demás empresas para conservar su disponibilidad.
 
-El rol migrador recibe solo `REFERENCES (empresa_id, id)` sobre `comun.membresias` para crear la relación de pertenencia. El runtime empresarial conserva acceso a su propio esquema. [Alcance y contrato de HU-013](hu/HU-013.md).
+El rol migrador recibe solo `REFERENCES (empresa_id, id)` sobre `comun.membresias` para crear la relación de pertenencia. El runtime empresarial conserva acceso a su propio esquema. [Catálogo de procesos](hu/HU-013.md) · [Inventario de activos](hu/HU-014.md).
 
 El comando legado `tenant <uuid>` ejecuta Flyway para un esquema ya aprovisionado. Para el alta técnica recuperable se usa `prepare`, que registra el intento y verifica la versión. Para usar manualmente `tenant.sql`, conservar `tenant-bootstrap.sql` a su lado.

@@ -45,7 +45,7 @@ class TenantPreparationTests {
         execute("CREATE ROLE " + migrationRole + " NOLOGIN");
         try {
             assertThat(prepare(tenant, false)).isEqualTo(1);
-            assertThat(attempts(tenant)).containsExactly("2/APROVISIONAR/FALLIDO");
+            assertThat(attempts(tenant)).containsExactly("3/APROVISIONAR/FALLIDO");
             assertThat(registry(tenant)).isEqualTo("ERROR_APROVISIONAMIENTO/-");
             assertThat(scalar("SELECT to_regnamespace('" + schema + "')")).isNull();
             assertThat(scalar("SELECT to_regrole('" + tenant.scope().runtimeRole() + "')")).isNull();
@@ -54,7 +54,7 @@ class TenantPreparationTests {
         }
 
         assertThat(prepare(tenant, false)).isEqualTo(3);
-        assertThat(attempts(tenant)).containsExactly("2/APROVISIONAR/FALLIDO", "2/CREDENCIALES/ESPERA_CREDENCIALES");
+        assertThat(attempts(tenant)).containsExactly("3/APROVISIONAR/FALLIDO", "3/CREDENCIALES/ESPERA_CREDENCIALES");
         Object schemaOid = scalar("SELECT oid FROM pg_namespace WHERE nspname = '" + schema + "'");
         Object migratorOid = scalar("SELECT oid FROM pg_roles WHERE rolname = '" + migrationRole + "'");
         database.setTenantPasswords(tenant);
@@ -63,10 +63,10 @@ class TenantPreparationTests {
 
         assertThat(scalar("SELECT oid FROM pg_namespace WHERE nspname = '" + schema + "'")).isEqualTo(schemaOid);
         assertThat(scalar("SELECT oid FROM pg_roles WHERE rolname = '" + migrationRole + "'")).isEqualTo(migratorOid);
-        assertThat(scalar("SELECT count(*) FROM " + schema + ".flyway_schema_history WHERE success")).isEqualTo(2L);
-        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/2");
-        assertThat(attempts(tenant)).containsExactly("2/APROVISIONAR/FALLIDO", "2/CREDENCIALES/ESPERA_CREDENCIALES",
-                "2/VERIFICAR/VERIFICADO", "2/VERIFICAR/VERIFICADO");
+        assertThat(scalar("SELECT count(*) FROM " + schema + ".flyway_schema_history WHERE success")).isEqualTo(3L);
+        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/3");
+        assertThat(attempts(tenant)).containsExactly("3/APROVISIONAR/FALLIDO", "3/CREDENCIALES/ESPERA_CREDENCIALES",
+                "3/VERIFICAR/VERIFICADO", "3/VERIFICAR/VERIFICADO");
     }
 
     @Test
@@ -78,7 +78,7 @@ class TenantPreparationTests {
         try {
             assertThat(prepare(tenant, true)).isEqualTo(1);
             assertThat(registry(tenant)).isEqualTo("ERROR_APROVISIONAMIENTO/-");
-            assertThat(attempts(tenant)).containsExactly("2/MIGRAR/FALLIDO");
+            assertThat(attempts(tenant)).containsExactly("3/MIGRAR/FALLIDO");
             assertThat(scalar("SELECT to_regclass('" + tenant.scope().schema() + ".contexto_empresa')")).isNull();
             assertBlocked(tenant);
             assertThat(readCompatibleCompany()).isEqualTo("B");
@@ -87,8 +87,8 @@ class TenantPreparationTests {
         }
 
         assertThat(prepare(tenant, true)).isZero();
-        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/2");
-        assertThat(attempts(tenant)).containsExactly("2/MIGRAR/FALLIDO", "2/VERIFICAR/VERIFICADO");
+        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/3");
+        assertThat(attempts(tenant)).containsExactly("3/MIGRAR/FALLIDO", "3/VERIFICAR/VERIFICADO");
         assertBlocked(tenant);
         assertThat(readCompatibleCompany()).isEqualTo("B");
     }
@@ -103,13 +103,13 @@ class TenantPreparationTests {
         try {
             assertThat(prepare(tenant, true)).isEqualTo(1);
             assertThat(registry(tenant)).isEqualTo("ERROR_APROVISIONAMIENTO/-");
-            assertThat(attempts(tenant)).containsExactly("2/VERIFICAR/FALLIDO");
+            assertThat(attempts(tenant)).containsExactly("3/VERIFICAR/FALLIDO");
         } finally {
             execute("REVOKE UPDATE (unica_fila) ON " + ownerTable + " FROM " + runtime);
         }
         assertThat(prepare(tenant, true)).isZero();
-        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/2");
-        assertThat(attempts(tenant)).containsExactly("2/VERIFICAR/FALLIDO", "2/VERIFICAR/VERIFICADO");
+        assertThat(registry(tenant)).isEqualTo("EN_PREPARACION/3");
+        assertThat(attempts(tenant)).containsExactly("3/VERIFICAR/FALLIDO", "3/VERIFICAR/VERIFICADO");
     }
 
     @Test
@@ -118,7 +118,7 @@ class TenantPreparationTests {
         execute("INSERT INTO comun.intentos_preparacion(id, empresa_id, version_objetivo, paso, resultado) VALUES ('"
                 + UUID.randomUUID() + "', '" + tenant.scope().companyId() + "', '1', 'MIGRAR', 'EN_CURSO')");
         assertThat(prepare(tenant, true)).isZero();
-        assertThat(attempts(tenant)).containsExactly("1/MIGRAR/INTERRUMPIDO", "2/VERIFICAR/VERIFICADO");
+        assertThat(attempts(tenant)).containsExactly("1/MIGRAR/INTERRUMPIDO", "3/VERIFICAR/VERIFICADO");
 
         try (var connection = database.runtime(); var statement = connection.createStatement()) {
             assertThatThrownBy(() -> statement.executeQuery("SELECT * FROM comun.intentos_preparacion"))
@@ -139,25 +139,25 @@ class TenantPreparationTests {
         assertThat(prepare(pending, false)).isEqualTo(3);
         assertThat(prepare(fixture.second, true)).isEqualTo(1);
         assertThat(attempts(fixture.second)).isEmpty();
-        assertThat(registry(fixture.second)).isEqualTo("ACTIVA/2");
+        assertThat(registry(fixture.second)).isEqualTo("ACTIVA/3");
         assertThat(readCompatibleCompany()).isEqualTo("B");
     }
 
     @Test
-    void upgradesAnExistingSuspendedV1CompanyAndPublishesOnlyAfterVerification() throws Exception {
+    void upgradesAnExistingSuspendedV2CompanyAndPublishesOnlyAfterVerification() throws Exception {
         var tenant = database.reserveAndProvisionTenant();
         var prior = org.flywaydb.core.Flyway.configure().configuration(database.tenantFlyway(tenant).getConfiguration())
-                .target("1").load();
-        assertThat(prior.migrate().migrationsExecuted).isOne();
+                .target("2").load();
+        assertThat(prior.migrate().migrationsExecuted).isEqualTo(2);
         String schema = tenant.scope().schema();
         String company = tenant.scope().companyId().toString();
-        String migrator = tenant.scope().migrationRole();
-        execute("REVOKE REFERENCES (empresa_id, id) ON comun.membresias FROM " + migrator);
-        execute("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '1' WHERE id = '" + company + "'");
+        execute("INSERT INTO " + schema + ".procesos (id, empresa_id, nombre, estado, revision) VALUES ('"
+                + UUID.randomUUID() + "', '" + company + "', 'Proceso previo', 'ACTIVO', 0)");
+        execute("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '2' WHERE id = '" + company + "'");
         var environment = new HashMap<>(database.preparationEnvironment());
         environment.putAll(credentials(tenant));
         assertThat(run("upgrade", tenant, environment)).isEqualTo(1);
-        assertThat(registry(tenant)).isEqualTo("ACTIVA/1");
+        assertThat(registry(tenant)).isEqualTo("ACTIVA/2");
         assertThat(attempts(tenant)).isEmpty();
 
         execute("UPDATE comun.empresas SET estado = 'SUSPENDIDA' WHERE id = '" + company + "'");
@@ -165,12 +165,13 @@ class TenantPreparationTests {
         invalid.put("MSPI_PREPARATION_RUNTIME_PASSWORD", UUID.randomUUID().toString());
         assertThat(run("upgrade", tenant, invalid)).isEqualTo(1);
         assertThat(registry(tenant)).isEqualTo("SUSPENDIDA/-");
-        assertThat(attempts(tenant)).containsExactly("2/VERIFICAR/FALLIDO");
+        assertThat(attempts(tenant)).containsExactly("3/VERIFICAR/FALLIDO");
         assertThat(run("upgrade", tenant, environment)).isZero();
-        assertThat(registry(tenant)).isEqualTo("SUSPENDIDA/2");
-        assertThat(attempts(tenant)).containsExactly("2/VERIFICAR/FALLIDO", "2/VERIFICAR/VERIFICADO");
+        assertThat(registry(tenant)).isEqualTo("SUSPENDIDA/3");
+        assertThat(attempts(tenant)).containsExactly("3/VERIFICAR/FALLIDO", "3/VERIFICAR/VERIFICADO");
         assertThat(scalar("SELECT empresa_id FROM " + schema + ".contexto_empresa")).isEqualTo(tenant.scope().companyId());
-        assertThat(scalar("SELECT count(*) FROM " + schema + ".flyway_schema_history WHERE success")).isEqualTo(2L);
+        assertThat(scalar("SELECT nombre FROM " + schema + ".procesos")).isEqualTo("Proceso previo");
+        assertThat(scalar("SELECT count(*) FROM " + schema + ".flyway_schema_history WHERE success")).isEqualTo(3L);
     }
 
     private void assertBlocked(TestDatabase.Tenant tenant) {

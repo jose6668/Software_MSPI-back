@@ -66,6 +66,12 @@ public final class TenantRuntimeVerifier {
                   AND (
                     (c.relname IN ('procesos', 'responsables_negocio') AND has_table_privilege(c.oid, 'SELECT')
                      AND has_table_privilege(c.oid, 'UPDATE'))
+                    OR (c.relname = 'activos' AND has_table_privilege(c.oid, 'SELECT') AND NOT EXISTS (
+                        SELECT 1 FROM pg_catalog.pg_attribute a
+                        WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                          AND has_column_privilege(c.oid, a.attnum, 'UPDATE') <>
+                              (a.attname NOT IN ('id', 'empresa_id', 'codigo', 'codigo_normalizado'))
+                    ))
                     OR (c.relname = 'eventos_actividad'
                         AND NOT has_any_column_privilege(c.oid, 'SELECT,UPDATE,REFERENCES'))
                   )
@@ -73,8 +79,16 @@ public final class TenantRuntimeVerifier {
             statement.setString(1, scope.schema());
             statement.setString(2, scope.migrationRole());
             try (var rows = statement.executeQuery()) {
-                if (!rows.next() || rows.getInt(1) != 3) {
+                if (!rows.next() || rows.getInt(1) != 4) {
                     throw new IllegalStateException("Permisos del catálogo empresarial incompatibles.");
+                }
+            }
+        }
+        try (var statement = connection.prepareStatement("SELECT has_function_privilege(?, 'EXECUTE')")) {
+            statement.setString(1, scope.schema() + ".historial_activo(uuid,uuid,integer,bigint)");
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next() || !rows.getBoolean(1)) {
+                    throw new IllegalStateException("Permisos de historial empresarial incompatibles.");
                 }
             }
         }

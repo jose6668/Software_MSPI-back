@@ -115,7 +115,7 @@ class ApiContractTests {
 
     @Test
     void protectsCompanyRoutesAndReturnsSafeNotFoundForAuthenticatedRequests() throws Exception {
-        var companyPath = API + "/empresas/" + UUID.randomUUID() + "/activos";
+        var companyPath = API + "/empresas/" + UUID.randomUUID() + "/riesgos";
         assertProblem(mvc.perform(get(companyPath)).andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("Location")).andReturn(), "NO_AUTENTICADO");
         assertProblem(mvc.perform(get(companyPath).with(user("persona"))).andExpect(status().isForbidden())

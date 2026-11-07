@@ -66,6 +66,11 @@ class ApiSecurityConfiguration {
                                 ApiProcessCatalogController.ARCHIVE_RESPONSIBLE).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiProcessCatalogController.PROCESS,
                                 ApiProcessCatalogController.RESPONSIBLE).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiAssetInventoryController.ASSETS,
+                                ApiAssetInventoryController.ASSET, ApiAssetInventoryController.HISTORY).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiAssetInventoryController.ASSETS,
+                                ApiAssetInventoryController.ARCHIVE, ApiAssetInventoryController.RESTORE).authenticated()
+                        .requestMatchers(HttpMethod.PUT, ApiAssetInventoryController.ASSET).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

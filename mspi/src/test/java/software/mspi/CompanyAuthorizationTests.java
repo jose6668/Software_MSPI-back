@@ -55,7 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {"mspi.tenancy.enabled=true", "mspi.tenancy.max-pools=2",
-        "mspi.tenancy.connections-per-pool=1", "mspi.tenancy.connection-timeout=5s", "mspi.tenancy.idle-ttl=30s",
+        "mspi.tenancy.connections-per-pool=2", "mspi.tenancy.connection-timeout=5s", "mspi.tenancy.idle-ttl=30s",
         "mspi.identity.attempts-per-address=60"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -70,6 +70,7 @@ class CompanyAuthorizationTests {
     private static final String RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables";
     private static final String ROLES = MEMBERS + "/{membresiaId}/roles";
     private static final String PROCESSES = "/api/v1/empresas/{empresaId}/procesos";
+    private static final String ASSETS = "/api/v1/empresas/{empresaId}/activos";
     private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
@@ -110,7 +111,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "2");
+            fixture.metadata(fixture.third, "ACTIVA", "3");
         }
     }
 
@@ -153,13 +154,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "2");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "3");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "2");
+            fixture.metadata(fixture.first, "ACTIVA", "3");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -392,7 +393,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '2' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '3' WHERE id = ?", company);
         return company;
     }
 
@@ -575,6 +576,194 @@ class CompanyAuthorizationTests {
 
     private UUID id(org.springframework.test.web.servlet.MvcResult result, String field) {
         return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray()).path(field).asString());
+    }
+
+    @Test
+    void assetCodeIsUniqueByCompanyAndRemainsReservedAfterArchiving() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        member(editor, b(), "AE");
+        var session = login(editor);
+        var aRefs = assetReferences(a(), session);
+        var bRefs = assetReferences(b(), session);
+
+        var first = catalogPost(ASSETS, a(), session, assetCreate("  Réd-01_  ", aRefs))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.codigo").value("Réd-01_"))
+                .andExpect(jsonPath("$.estadoClasificacion").value("PENDIENTE")).andReturn();
+        UUID firstId = id(first, "activoId");
+        catalogPost(ASSETS, a(), session, assetCreate("réD-01_", aRefs))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CODIGO_ACTIVO_DUPLICADO"));
+        catalogPost(ASSETS, b(), session, assetCreate("réd-01_", bRefs)).andExpect(status().isCreated());
+        catalogPost(ASSETS, a(), session, assetCreate("Red-01_", aRefs)).andExpect(status().isCreated());
+        catalogPost(ASSETS, a(), session, assetCreate("Réd 01_", aRefs)).andExpect(status().isCreated());
+        mvc.perform(get(ASSETS, a()).session(session).param("texto", "_").param("tamano", "1")
+                        .param("tipo", "RED").param("procesoId", aRefs.get("procesoId").toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.hayMas").value(true));
+        mvc.perform(get(ASSETS, a()).session(session).param("texto", "%"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(0));
+        catalogPost(ASSETS + "/{id}/archivar", a(), session, Map.of("revisionEsperada", 0, "motivo", "Retiro"), firstId)
+                .andExpect(status().isOk());
+        catalogPost(ASSETS, a(), session, assetCreate("RÉD-01_", aRefs))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CODIGO_ACTIVO_DUPLICADO"));
+        mvc.perform(get(ASSETS, a()).session(session).param("estado", "ARCHIVADO").param("texto", "réd-01"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].activoId").value(firstId.toString()));
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE activos SET codigo = 'Otro'"), "42501");
+            assertSqlState(() -> statement.executeUpdate("DELETE FROM activos"), "42501");
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM eventos_actividad"), "42501");
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM " + fixture.second.scope().schema() + ".activos"), "42501");
+        }
+    }
+
+    @Test
+    void assetEndpointsRestrictRolesAndRejectCrossCompanyReferences() throws Exception {
+        var editor = account();
+        var auditor = account();
+        var assigned = account();
+        member(editor, a(), "GS");
+        member(editor, b(), "GS");
+        member(auditor, a(), "AU");
+        member(assigned, a(), "RA");
+        var session = login(editor);
+        var au = login(auditor);
+        var ra = login(assigned);
+        var local = assetReferences(a(), session);
+        var foreign = assetReferences(b(), session);
+
+        mvc.perform(get(ASSETS, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(ASSETS, a()).session(ra)).andExpect(status().isForbidden());
+        catalogPost(ASSETS, a(), au, assetCreate("PERMISO-01", local)).andExpect(status().isForbidden());
+        mvc.perform(post(ASSETS, a()).session(session).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(assetCreate("PERMISO-01", local))))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALIDO"));
+        for (String key : List.of("procesoId", "propietarioId", "custodioId")) {
+            var mixed = new HashMap<>(local);
+            mixed.put(key, foreign.get(key.equals("custodioId") ? "propietarioId" : key));
+            catalogPost(ASSETS, a(), session, assetCreate("PERMISO-01", mixed))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        }
+        var invalid = new HashMap<>(assetCreate("PERMISO-01", local));
+        invalid.put("tipo", "OTRO");
+        catalogPost(ASSETS, a(), session, invalid).andExpect(status().isBadRequest());
+        var created = catalogPost(ASSETS, a(), session, assetCreate("PERMISO-01", local))
+                .andExpect(status().isCreated()).andReturn();
+        UUID id = id(created, "activoId");
+        mvc.perform(get(ASSETS + "/{id}", a(), id).session(au)).andExpect(status().isOk());
+        mvc.perform(get(ASSETS + "/{id}", b(), id).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(ASSETS + "/{id}/historial", a(), id).session(au)).andExpect(status().isForbidden());
+        mvc.perform(get(ASSETS + "/{id}/historial", a(), id).session(session)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void assetRestorationRevalidatesReferencesAndPreservesAuthorizedHistory() throws Exception {
+        var editor = account();
+        member(editor, b(), "AE");
+        var session = login(editor);
+        var original = assetReferences(b(), session);
+        var replacement = assetReferences(b(), session);
+        var created = catalogPost(ASSETS, b(), session, assetCreate("CICLO-01", original))
+                .andExpect(status().isCreated()).andReturn();
+        UUID id = id(created, "activoId");
+
+        catalogPut(ASSETS, b(), id, session, assetEdit(0, "Activo editado", original))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
+        catalogPut(ASSETS, b(), id, session, assetEdit(0, "Revisión obsoleta", original))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REVISION_DESACTUALIZADA"));
+        catalogPost(ASSETS + "/{id}/archivar", b(), session, Map.of("revisionEsperada", 1, "motivo", " "), id)
+                .andExpect(status().isBadRequest());
+        catalogPost(ASSETS + "/{id}/archivar", b(), session, Map.of("revisionEsperada", 1, "motivo", "Mantenimiento"), id)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("ARCHIVADO"));
+        catalogPut(ASSETS, b(), id, session, assetEdit(2, "Archivado", original))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REGISTRO_ARCHIVADO"));
+
+        catalogPost(PROCESSES + "/{id}/archivar", b(), session,
+                Map.of("revisionEsperada", 0, "motivo", "Cambio de proceso"), original.get("procesoId"))
+                .andExpect(status().isOk());
+        catalogPost(ASSETS, b(), session, assetCreate("CICLO-NUEVO", original))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        catalogPost(ASSETS + "/{id}/restaurar", b(), session, Map.of("revisionEsperada", 2, "motivo", "Verificado"), id)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        var restored = catalogPost(ASSETS + "/{id}/restaurar", b(), session,
+                Map.of("revisionEsperada", 2, "motivo", "Reasignado", "referencias", replacement), id)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.activoId").value(id.toString()))
+                .andExpect(jsonPath("$.estado").value("ACTIVO")).andExpect(jsonPath("$.revision").value(3))
+                .andExpect(jsonPath("$.procesoId").value(replacement.get("procesoId").toString())).andReturn();
+
+        mvc.perform(get(ASSETS + "/{id}/historial", b(), id).session(session).param("tamano", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hayMas").value(true))
+                .andExpect(jsonPath("$.elementos[0].accion").value("RESTAURAR"))
+                .andExpect(jsonPath("$.elementos[0].actorId").value(editor.id().toString()))
+                .andExpect(jsonPath("$.elementos[0].correlationId").value(restored.getResponse().getHeader("X-Correlation-Id")))
+                .andExpect(jsonPath("$.elementos[0].referencias.anteriores.procesoId").value(original.get("procesoId").toString()))
+                .andExpect(jsonPath("$.elementos[0].referencias.nuevas.procesoId").value(replacement.get("procesoId").toString()))
+                .andExpect(jsonPath("$.elementos[1].accion").value("ARCHIVAR"))
+                .andExpect(jsonPath("$.elementos[1].motivo").value("Mantenimiento"));
+    }
+
+    @Test
+    void concurrentEquivalentAssetCodesCreateOnlyOneAssetAndOneEvent() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        var session = login(editor);
+        var references = assetReferences(a(), session);
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPost(ASSETS, a(), session, assetCreate(" Carrera-01 ", references)).andReturn();
+            });
+            var second = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPost(ASSETS, a(), session, assetCreate("carrera-01", references)).andReturn();
+            });
+            var responses = List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertThat(responses).extracting(result -> result.getResponse().getStatus()).containsExactlyInAnyOrder(201, 409);
+            var created = responses.stream().filter(result -> result.getResponse().getStatus() == 201).findFirst().orElseThrow();
+            UUID asset = id(created, "activoId");
+            assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                    + ".eventos_actividad WHERE objeto_id = ? AND tipo_objeto = 'ACTIVO'", asset)).isOne();
+            var editFirst = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPut(ASSETS, a(), asset, session, assetEdit(0, "Edición A", references)).andReturn();
+            });
+            var editSecond = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPut(ASSETS, a(), asset, session, assetEdit(0, "Edición B", references)).andReturn();
+            });
+            assertThat(List.of(editFirst.get(15, TimeUnit.SECONDS), editSecond.get(15, TimeUnit.SECONDS)))
+                    .extracting(result -> result.getResponse().getStatus()).containsExactlyInAnyOrder(200, 409);
+            assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                    + ".eventos_actividad WHERE objeto_id = ? AND accion = 'EDITAR'", asset)).isOne();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private Map<String, UUID> assetReferences(UUID company, MockHttpSession session) throws Exception {
+        var process = catalogPost(PROCESSES, company, session, Map.of("nombre", "Proceso de inventario"))
+                .andExpect(status().isCreated()).andReturn();
+        var owner = catalogPost(BUSINESS_RESPONSIBLES, company, session, Map.of("nombre", "Custodia", "tipo", "CARGO"))
+                .andExpect(status().isCreated()).andReturn();
+        return Map.of("procesoId", id(process, "procesoId"), "propietarioId", id(owner, "responsableId"));
+    }
+
+    private static Map<String, Object> assetCreate(String code, Map<String, UUID> references) {
+        var body = new HashMap<>(assetEdit(0, "Equipo de red", references));
+        body.remove("revisionEsperada");
+        body.put("codigo", code);
+        return body;
+    }
+
+    private static Map<String, Object> assetEdit(long revision, String name, Map<String, UUID> references) {
+        var body = new HashMap<String, Object>(references);
+        body.put("revisionEsperada", revision);
+        body.put("nombre", name);
+        body.put("descripcion", "Equipo de prueba");
+        body.put("tipo", "RED");
+        return body;
     }
 
     private UUID a() { return fixture.first.scope().companyId(); }

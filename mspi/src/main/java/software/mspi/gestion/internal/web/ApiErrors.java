@@ -130,6 +130,10 @@ final class ApiErrors {
                         "La referencia no está disponible para esta operación.");
                 case ARCHIVED -> new Problem(HttpStatus.CONFLICT, "REGISTRO_ARCHIVADO",
                         "El registro archivado no admite cambios.");
+                case DUPLICATE_CODE -> new Problem(HttpStatus.CONFLICT, "CODIGO_ACTIVO_DUPLICADO",
+                        "El código ya pertenece a un activo de la empresa.");
+                case INCOMPATIBLE_STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_INCOMPATIBLE",
+                        "El estado vigente no permite la operación.");
             };
         }
         if (failure instanceof RecoveryFailure recovery) {

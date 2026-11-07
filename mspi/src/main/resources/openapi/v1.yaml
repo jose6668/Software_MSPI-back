@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.7.0'
+  version: '1.8.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -241,6 +241,193 @@ paths:
         '406':
           $ref: '#/components/responses/Problem'
         '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/activos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarActivos
+      summary: Consulta el inventario local
+      description: Requiere AE, GS o AU de la empresa activa. Busca texto literal en código o nombre y admite filtros opcionales.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/CatalogState'
+        - $ref: '#/components/parameters/InventorySearch'
+        - $ref: '#/components/parameters/InventoryTypeFilter'
+        - $ref: '#/components/parameters/InventoryProcessFilter'
+      responses:
+        '200':
+          description: Consulta el inventario local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetInventoryPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearActivo
+      summary: Registra un activo
+      description: Requiere AE o GS de la empresa activa. El código se reserva por empresa y se fija al crear.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInventoryAsset'
+      responses:
+        '201':
+          description: Registra un activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAsset'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/activos/{activoId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/InventoryAssetId'
+    get:
+      operationId: consultarActivo
+      summary: Consulta un activo local
+      description: Requiere AE, GS o AU de la empresa activa. Incluye fichas archivadas.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta un activo local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAsset'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: editarActivo
+      summary: Edita un activo vigente
+      description: Requiere AE o GS de la empresa activa. Exige revisión y preserva el código original.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditInventoryAsset'
+      responses:
+        '200':
+          description: Edita un activo vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAsset'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/activos/{activoId}/archivar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/InventoryAssetId'
+    post:
+      operationId: archivarActivo
+      summary: Archiva un activo local
+      description: Requiere AE o GS de la empresa activa. Exige motivo y revisión vigente.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveInventoryAsset'
+      responses:
+        '200':
+          description: Archiva un activo local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAsset'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/activos/{activoId}/restaurar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/InventoryAssetId'
+    post:
+      operationId: restaurarActivo
+      summary: Restaura un activo archivado
+      description: Requiere AE o GS de la empresa activa. Revalida todas las referencias y permite proporcionar reemplazos.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestoreInventoryAsset'
+      responses:
+        '200':
+          description: Restaura un activo archivado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryAsset'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/activos/{activoId}/historial:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/InventoryAssetId'
+    get:
+      operationId: consultarHistorialActivo
+      summary: Consulta el historial del activo
+      description: Solo AE de la empresa activa. Incluye estados, motivo, campos modificados y referencias históricas.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Consulta el historial del activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryHistoryPage'
+        default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
     parameters:
@@ -894,6 +1081,23 @@ components:
       name: MSPISESSION
       description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
   parameters:
+    InventoryAssetId:
+      name: activoId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    InventorySearch:
+      name: texto
+      in: query
+      schema: {type: string, maxLength: 250}
+    InventoryTypeFilter:
+      name: tipo
+      in: query
+      schema: {type: string, enum: [INFORMACION, HARDWARE, SOFTWARE, SERVICIO, RECURSO_HUMANO, INSTALACION, RED]}
+    InventoryProcessFilter:
+      name: procesoId
+      in: query
+      schema: {type: string, format: uuid}
     BusinessProcessId:
       name: procesoId
       in: path
@@ -1006,6 +1210,111 @@ components:
               revisionEsperada: {type: integer, format: int64, minimum: 1}
               motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    CreateInventoryAsset:
+      type: object
+      additionalProperties: false
+      required: [codigo, nombre, descripcion, tipo, procesoId, propietarioId]
+      properties:
+        codigo: {type: string, minLength: 1, maxLength: 80}
+        nombre: {type: string, minLength: 1, maxLength: 250}
+        descripcion: {type: string, minLength: 1}
+        tipo: {type: string, enum: [INFORMACION, HARDWARE, SOFTWARE, SERVICIO, RECURSO_HUMANO, INSTALACION, RED]}
+        procesoId: {type: string, format: uuid}
+        propietarioId: {type: string, format: uuid}
+        custodioId: {type: [string, 'null'], format: uuid}
+        ubicacion: {type: [string, 'null'], maxLength: 1000}
+    EditInventoryAsset:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, nombre, descripcion, tipo, procesoId, propietarioId]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        nombre: {type: string, minLength: 1, maxLength: 250}
+        descripcion: {type: string, minLength: 1}
+        tipo: {type: string, enum: [INFORMACION, HARDWARE, SOFTWARE, SERVICIO, RECURSO_HUMANO, INSTALACION, RED]}
+        procesoId: {type: string, format: uuid}
+        propietarioId: {type: string, format: uuid}
+        custodioId: {type: [string, 'null'], format: uuid}
+        ubicacion: {type: [string, 'null'], maxLength: 1000}
+    InventoryAsset:
+      type: object
+      additionalProperties: false
+      required: [activoId, codigo, nombre, descripcion, tipo, procesoId, propietarioId, custodioId, ubicacion, estado, revision, estadoClasificacion]
+      properties:
+        activoId: {type: string, format: uuid}
+        codigo: {type: string, minLength: 1, maxLength: 80}
+        nombre: {type: string, minLength: 1, maxLength: 250}
+        descripcion: {type: string, minLength: 1}
+        tipo: {type: string, enum: [INFORMACION, HARDWARE, SOFTWARE, SERVICIO, RECURSO_HUMANO, INSTALACION, RED]}
+        procesoId: {type: string, format: uuid}
+        propietarioId: {type: string, format: uuid}
+        custodioId: {type: [string, 'null'], format: uuid}
+        ubicacion: {type: [string, 'null'], maxLength: 1000}
+        estado: {type: string, enum: [ACTIVO, ARCHIVADO]}
+        revision: {type: integer, format: int64, minimum: 0}
+        estadoClasificacion: {type: string, const: PENDIENTE}
+    ArchiveInventoryAsset:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        motivo: {type: string, minLength: 1, maxLength: 1000}
+    RestoreInventoryAsset:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        motivo: {type: string, minLength: 1, maxLength: 1000}
+        referencias: {$ref: '#/components/schemas/InventoryReferences'}
+    InventoryReferences:
+      type: [object, 'null']
+      additionalProperties: false
+      required: [procesoId, propietarioId]
+      properties:
+        procesoId: {type: string, format: uuid}
+        propietarioId: {type: string, format: uuid}
+        custodioId: {type: [string, 'null'], format: uuid}
+    InventoryReferenceChange:
+      type: [object, 'null']
+      additionalProperties: false
+      required: [anteriores, nuevas]
+      properties:
+        anteriores: {$ref: '#/components/schemas/InventoryReferences'}
+        nuevas: {$ref: '#/components/schemas/InventoryReferences'}
+    InventoryHistoryEntry:
+      type: object
+      additionalProperties: false
+      required: [actorId, accion, estadoAnterior, estadoNuevo, motivo, correlationId, registradoEn, camposModificados, referencias]
+      properties:
+        actorId: {type: string, format: uuid}
+        accion: {type: string, enum: [CREAR, EDITAR, ARCHIVAR, RESTAURAR]}
+        estadoAnterior: {type: [string, 'null'], enum: [ACTIVO, ARCHIVADO, null]}
+        estadoNuevo: {type: string, enum: [ACTIVO, ARCHIVADO]}
+        motivo: {type: [string, 'null']}
+        correlationId: {type: string, format: uuid}
+        registradoEn: {type: string, format: date-time}
+        camposModificados: {type: array, items: {type: string}}
+        referencias: {$ref: '#/components/schemas/InventoryReferenceChange'}
+    AssetInventoryPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/InventoryAsset'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    InventoryHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/InventoryHistoryEntry'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     BusinessProcess:
       type: object
       additionalProperties: false
