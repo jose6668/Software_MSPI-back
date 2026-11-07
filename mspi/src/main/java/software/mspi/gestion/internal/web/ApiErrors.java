@@ -25,6 +25,7 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.activos.api.CatalogFailure;
+import software.mspi.activos.api.ClassificationFailure;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
@@ -122,6 +123,19 @@ final class ApiErrors {
         }
         if (failure instanceof LoginLimitException) {
             return new Problem(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADOS_INTENTOS", "Intente de nuevo más tarde.");
+        }
+        if (failure instanceof ClassificationFailure classification) {
+            var fields = classification.fields().stream()
+                    .map(field -> invalidField("motivoRevision".equals(field) ? field : "entradas." + field)).toList();
+            return switch (classification.reason()) {
+                case INVALID -> validation(fields);
+                case INCOMPLETE -> new Problem(HttpStatus.CONFLICT, "CLASIFICACION_INCOMPLETA",
+                        "Complete los campos requeridos antes de confirmar.", fields);
+                case DRAFT_EXISTS -> new Problem(HttpStatus.CONFLICT, "CLASIFICACION_PENDIENTE_EXISTENTE",
+                        "El activo ya tiene una valoración pendiente.");
+                case CONFIRMED -> new Problem(HttpStatus.CONFLICT, "VALORACION_CONFIRMADA",
+                        "Cree una nueva versión para revisar esta valoración.");
+            };
         }
         if (failure instanceof CatalogFailure catalog) {
             return switch (catalog.reason()) {

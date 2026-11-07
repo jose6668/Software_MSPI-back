@@ -71,6 +71,7 @@ class CompanyAuthorizationTests {
     private static final String ROLES = MEMBERS + "/{membresiaId}/roles";
     private static final String PROCESSES = "/api/v1/empresas/{empresaId}/procesos";
     private static final String ASSETS = "/api/v1/empresas/{empresaId}/activos";
+    private static final String VALUATIONS = ASSETS + "/{activoId}/clasificaciones";
     private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
@@ -111,7 +112,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "3");
+            fixture.metadata(fixture.third, "ACTIVA", "4");
         }
     }
 
@@ -154,13 +155,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "3");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "4");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "3");
+            fixture.metadata(fixture.first, "ACTIVA", "4");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -393,7 +394,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '3' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '4' WHERE id = ?", company);
         return company;
     }
 
@@ -740,6 +741,208 @@ class CompanyAuthorizationTests {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void classificationAppliesTheApprovedMaximumAndLeavesPartialInputsPending() throws Exception {
+        var editor = account();
+        member(editor, a(), "GS");
+        var session = login(editor);
+        var refs = assetReferences(a(), session);
+        UUID asset = classifiedAsset(a(), session, "CID-PEND", refs);
+        startValuation(a(), asset, session, Map.of("confidencialidad", 4), null)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields[0].field").value("entradas.confidencialidad"));
+        startValuation(a(), asset, session, Map.of("criticidad", 5), null)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("CAMPO_NO_PERMITIDO"));
+        var started = startValuation(a(), asset, session, Map.of("confidencialidad", 5, "disponibilidad", 1), null)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("PENDIENTE"))
+                .andExpect(jsonPath("$.criticidad").isEmpty()).andReturn();
+        UUID draft = id(started, "valoracionId");
+        confirmValuation(a(), asset, draft, session, 0).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLASIFICACION_INCOMPLETA"));
+        mvc.perform(get(ASSETS + "/{id}", a(), asset).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estadoClasificacion").value("PENDIENTE"));
+        editValuation(a(), asset, draft, session, 0, completeInputs(5, 1, 1))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
+        confirmValuation(a(), asset, draft, session, 0).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REVISION_DESACTUALIZADA"));
+        confirmValuation(a(), asset, draft, session, 1).andExpect(status().isOk())
+                .andExpect(jsonPath("$.nivel").value("ALTA")).andExpect(jsonPath("$.criticidad").value(5))
+                .andExpect(jsonPath("$.metodologia").value("CID_MAX_V1"))
+                .andExpect(jsonPath("$.confirmadaPor").value(editor.id().toString()));
+
+        int[][] examples = {{1, 1, 1, 1}, {3, 1, 1, 3}, {3, 5, 5, 5}};
+        String[] levels = {"BAJA", "MEDIA", "ALTA"};
+        for (int index = 0; index < examples.length; index++) {
+            int[] example = examples[index];
+            UUID next = classifiedAsset(a(), session, "CID-ESCALA-" + index, refs);
+            UUID valuation = id(startValuation(a(), next, session, completeInputs(example[0], example[1], example[2]), null)
+                    .andExpect(status().isCreated()).andReturn(), "valoracionId");
+            confirmValuation(a(), next, valuation, session, 0).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.nivel").value(levels[index]))
+                    .andExpect(jsonPath("$.criticidad").value(example[3]));
+        }
+    }
+
+    @Test
+    void validatesConditionalDataAndKeepsConfirmedVersionsAndTheirCategories() throws Exception {
+        var editor = account();
+        member(editor, b(), "AE");
+        var session = login(editor);
+        UUID asset = classifiedAsset(b(), session, "CID-DATOS", assetReferences(b(), session));
+        startValuation(b(), asset, session, Map.of("contieneDatosPersonales", false, "contieneDatosMenores", true), null)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields[0].field").value("entradas.contieneDatosMenores"));
+        startValuation(b(), asset, session, Map.of("contieneDatosPersonales", true, "autorizacionTratamiento", "NO_APLICA"), null)
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields[0].field").value("entradas.justificacionNoAplica"));
+        startValuation(b(), asset, session, Map.of("contieneDatosPersonales", true,
+                        "tiposDatosPersonales", List.of("SALUD", "SALUD")), null)
+                .andExpect(status().isBadRequest());
+        startValuation(b(), asset, session, Map.of("contieneDatosPersonales", true,
+                        "tiposDatosPersonales", List.of("INVENTADO")), null)
+                .andExpect(status().isBadRequest());
+
+        var inputs = new HashMap<>(completeInputs(5, 3, 1));
+        inputs.put("contieneDatosPersonales", true);
+        UUID initial = id(startValuation(b(), asset, session, inputs, null)
+                .andExpect(status().isCreated()).andReturn(), "valoracionId");
+        confirmValuation(b(), asset, initial, session, 0).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CLASIFICACION_INCOMPLETA"));
+        inputs.put("contieneDatosMenores", false);
+        inputs.put("tiposDatosPersonales", List.of("IDENTIFICACION", "CONTACTO"));
+        inputs.put("finalidadTratamiento", "Registro de prueba");
+        inputs.put("autorizacionTratamiento", "NO_APLICA");
+        inputs.put("justificacionNoAplica", "Justificación ficticia");
+        editValuation(b(), asset, initial, session, 0, inputs).andExpect(status().isOk());
+        confirmValuation(b(), asset, initial, session, 1).andExpect(status().isOk())
+                .andExpect(jsonPath("$.versionTiposDatos").value("DATOS_PERSONALES_V1"))
+                .andExpect(jsonPath("$.entradas.tiposDatosPersonales.length()").value(2));
+        editValuation(b(), asset, initial, session, 2, completeInputs(1, 1, 1)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VALORACION_CONFIRMADA"));
+
+        startValuation(b(), asset, session, Map.of(), null).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fields[0].field").value("motivoRevision"));
+        UUID next = id(startValuation(b(), asset, session, inputs, "Corrección de captura")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.numero").value(2))
+                .andExpect(jsonPath("$.vigente").value(false)).andReturn(), "valoracionId");
+        mvc.perform(get(VALUATIONS + "/{valoracionId}", b(), asset, initial).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.vigente").value(true));
+        editValuation(b(), asset, next, session, 0, completeInputs(1, 1, 1))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.entradas.tiposDatosPersonales").isEmpty());
+        confirmValuation(b(), asset, next, session, 1).andExpect(status().isOk())
+                .andExpect(jsonPath("$.vigente").value(true)).andExpect(jsonPath("$.nivel").value("BAJA"));
+        mvc.perform(get(VALUATIONS + "/{valoracionId}", b(), asset, initial).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.vigente").value(false))
+                .andExpect(jsonPath("$.entradas.tiposDatosPersonales.length()").value(2));
+        mvc.perform(get(ASSETS + "/{id}", b(), asset).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estadoClasificacion").value("COMPLETO"))
+                .andExpect(jsonPath("$.revision").value(2));
+
+        try (var connection = fixture.database.connect(fixture.second.scope().runtimeRole(), fixture.second.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE valoraciones_activo SET fundamento = 'alterado' WHERE id = '"
+                    + initial + "'"), "23514");
+            assertSqlState(() -> statement.executeUpdate("DELETE FROM valoracion_tipos_dato WHERE valoracion_id = '"
+                    + initial + "'"), "23514");
+        }
+    }
+
+    @Test
+    void classificationEnforcesPermissionsCompanyOwnershipAndArchivedState() throws Exception {
+        var editor = account();
+        var auditor = account();
+        var responsible = account();
+        member(editor, a(), "AE");
+        member(editor, b(), "AE");
+        member(auditor, a(), "AU");
+        member(responsible, a(), "RA");
+        var session = login(editor);
+        var au = login(auditor);
+        var ra = login(responsible);
+        UUID asset = classifiedAsset(a(), session, "CID-PERM", assetReferences(a(), session));
+        UUID other = classifiedAsset(b(), session, "CID-PERM", assetReferences(b(), session));
+        UUID draft = id(startValuation(a(), asset, session, completeInputs(3, 1, 1), null)
+                .andExpect(status().isCreated()).andReturn(), "valoracionId");
+        mvc.perform(get(VALUATIONS, a(), asset).session(au)).andExpect(status().isOk());
+        mvc.perform(get(VALUATIONS, a(), asset).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(VALUATIONS, b(), asset).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(VALUATIONS + "/{valoracionId}", b(), other, draft).session(session))
+                .andExpect(status().isNotFound());
+        confirmValuation(a(), asset, draft, au, 0).andExpect(status().isForbidden());
+        mvc.perform(post(VALUATIONS + "/{valoracionId}/confirmar", a(), asset, draft).session(session)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"revisionEsperada\":0}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALIDO"));
+        catalogPost(ASSETS + "/{id}/archivar", a(), session, Map.of("revisionEsperada", 0, "motivo", "Retiro"), asset)
+                .andExpect(status().isOk());
+        confirmValuation(a(), asset, draft, session, 0).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REGISTRO_ARCHIVADO"));
+        mvc.perform(get(VALUATIONS + "/{valoracionId}", a(), asset, draft).session(au))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("PENDIENTE"));
+    }
+
+    @Test
+    void simultaneousValuationStartsAndConfirmationsSerializeByAsset() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        var session = login(editor);
+        UUID asset = classifiedAsset(a(), session, "CID-RACE", assetReferences(a(), session));
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<org.springframework.test.web.servlet.MvcResult> start = () -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return startValuation(a(), asset, session, completeInputs(3, 1, 1), null).andReturn();
+            };
+            var first = executor.submit(start);
+            var second = executor.submit(start);
+            var responses = List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertThat(responses).extracting(result -> result.getResponse().getStatus()).containsExactlyInAnyOrder(201, 409);
+            var created = responses.stream().filter(result -> result.getResponse().getStatus() == 201).findFirst().orElseThrow();
+            UUID draft = id(created, "valoracionId");
+            java.util.concurrent.Callable<Integer> confirm = () -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return confirmValuation(a(), asset, draft, session, 0).andReturn().getResponse().getStatus();
+            };
+            var confirmFirst = executor.submit(confirm);
+            var confirmSecond = executor.submit(confirm);
+            assertThat(List.of(confirmFirst.get(15, TimeUnit.SECONDS), confirmSecond.get(15, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+            assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                    + ".eventos_actividad WHERE objeto_id = ? AND accion = 'CONFIRMAR_CLASIFICACION'", draft)).isOne();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private UUID classifiedAsset(UUID company, MockHttpSession session, String code, Map<String, UUID> refs)
+            throws Exception {
+        return id(catalogPost(ASSETS, company, session, assetCreate(code, refs))
+                .andExpect(status().isCreated()).andReturn(), "activoId");
+    }
+
+    private ResultActions startValuation(UUID company, UUID asset, MockHttpSession session, Map<String, ?> entries,
+                                          String reason) throws Exception {
+        var body = new HashMap<String, Object>();
+        body.put("entradas", entries);
+        body.put("motivoRevision", reason);
+        return catalogPost(VALUATIONS, company, session, body, asset);
+    }
+
+    private ResultActions editValuation(UUID company, UUID asset, UUID valuation, MockHttpSession session,
+                                         long revision, Map<String, ?> entries) throws Exception {
+        return mvc.perform(put(VALUATIONS + "/{valoracionId}", company, asset, valuation).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", revision, "entradas", entries))));
+    }
+
+    private ResultActions confirmValuation(UUID company, UUID asset, UUID valuation, MockHttpSession session, long revision)
+            throws Exception {
+        return catalogPost(VALUATIONS + "/{valoracionId}/confirmar", company, session,
+                Map.of("revisionEsperada", revision), asset, valuation);
+    }
+
+    private static Map<String, Object> completeInputs(int confidentiality, int integrity, int availability) {
+        return Map.of("confidencialidad", confidentiality, "integridad", integrity, "disponibilidad", availability,
+                "fundamento", "Fundamento ficticio de prueba", "contieneDatosPersonales", false);
     }
 
     private Map<String, UUID> assetReferences(UUID company, MockHttpSession session) throws Exception {

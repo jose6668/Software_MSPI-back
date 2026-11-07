@@ -29,6 +29,7 @@ class AssetRecord extends CatalogRecord {
     @Column(name = "propietario_id") UUID ownerId;
     @Column(name = "custodio_id") UUID custodianId;
     @Column(name = "ubicacion") String location;
+    @Column(name = "valoracion_vigente_id") UUID currentValuation;
 
     protected AssetRecord() {}
 
@@ -78,6 +79,6 @@ class AssetRecord extends CatalogRecord {
 
     Asset view() {
         return new Asset(id, code, name, description, type, processId, ownerId, custodianId, location,
-                state, revision, "PENDIENTE");
+                state, revision, currentValuation == null ? "PENDIENTE" : "COMPLETO");
     }
 }
