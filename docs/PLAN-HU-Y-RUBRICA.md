@@ -82,7 +82,7 @@ Reglas obligatorias:
 
 ## 5. Backlog propuesto y secuencia
 
-Las fichas registran el estado y la evidencia de [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md), [HU-004](hu/HU-004.md), [HU-005](hu/HU-005.md), [HU-006](hu/HU-006.md), [HU-007](hu/HU-007.md), [HU-008](hu/HU-008.md) y [HU-009](hu/HU-009.md). El resto permanece en estado **Propuesta**. Los números identifican historias y el orden depende de sus prerrequisitos.
+Las fichas registran el estado y la evidencia de [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md), [HU-004](hu/HU-004.md), [HU-005](hu/HU-005.md), [HU-006](hu/HU-006.md), [HU-007](hu/HU-007.md), [HU-008](hu/HU-008.md), [HU-009](hu/HU-009.md) y [HU-010](hu/HU-010.md). El resto permanece en estado **Propuesta**. Los números identifican historias y el orden depende de sus prerrequisitos.
 
 ### Etapa inicial: estructura y entorno reproducible
 
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-008 quedaron integradas mediante PR #1 a #8. **HU-009** establece la emisión y aceptación de invitaciones. Después de integrarla corresponde **HU-010**, sobre alta, suspensión y reactivación de empresas. Consultar la [ficha de HU-009](hu/HU-009.md).
+HU-001 a HU-009 quedaron integradas mediante PR #1 a #9. **HU-010** establece el alta, la suspensión y la reactivación de empresas. Después de integrarla corresponde **HU-011**, sobre configuración y administración de membresías. Consultar la [ficha de HU-010](hu/HU-010.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.

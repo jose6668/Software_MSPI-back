@@ -1,6 +1,6 @@
 # Preparación empresarial recuperable
 
-HU-005 implementa el flujo técnico inicial de DMP-07, TR-EMP-03/04, AIS-17/18 y AT-09. Opera sobre una empresa ya reservada en `comun.empresas`, identificada por su UUID. El alta funcional, la configuración operativa y la invitación inicial corresponden a HU-010.
+HU-005 implementa el flujo técnico inicial de DMP-07, TR-EMP-03/04, AIS-17/18 y AT-09. Opera sobre una empresa ya reservada en `comun.empresas`, identificada por su UUID. HU-010 integra la reserva y la activación con invitación inicial. [Ciclo de empresas](CICLO-EMPRESAS.md).
 
 ## Ejecutar en un entorno de prueba
 

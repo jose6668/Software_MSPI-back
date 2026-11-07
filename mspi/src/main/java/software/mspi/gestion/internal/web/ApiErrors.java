@@ -20,10 +20,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.empresas.api.InvitationFailure;
+import software.mspi.empresas.api.PlatformFailure;
 import software.mspi.identidad.api.LoginLimitException;
 import tools.jackson.databind.exc.UnrecognizedPropertyException;
 import tools.jackson.databind.json.JsonMapper;
@@ -96,6 +98,9 @@ final class ApiErrors {
         if (failure instanceof MissingServletRequestParameterException missing) {
             return validation(List.of(new Field(missing.getParameterName(), "REQUERIDO", "Indique el parámetro.")));
         }
+        if (failure instanceof MissingRequestHeaderException missing) {
+            return validation(List.of(new Field(missing.getHeaderName(), "REQUERIDO", "Indique la cabecera.")));
+        }
         if (failure instanceof MethodArgumentTypeMismatchException mismatch) {
             return validation(List.of(invalidField(mismatch.getName())));
         }
@@ -123,6 +128,19 @@ final class ApiErrors {
                         "No se pudo enviar la invitación. Intente de nuevo más tarde.");
                 case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
                         "La contraseña no alcanza la longitud mínima configurada.")));
+            };
+        }
+        if (failure instanceof PlatformFailure platform) {
+            return switch (platform.reason()) {
+                case CONFLICT -> new Problem(HttpStatus.CONFLICT, "ESTADO_O_REVISION_INCOMPATIBLE",
+                        "Consulte el estado y la revisión vigentes de la empresa.");
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case INCOMPATIBLE -> new Problem(HttpStatus.CONFLICT, "ESTRUCTURA_NO_COMPATIBLE",
+                        "La empresa necesita una verificación técnica satisfactoria.");
+                case MAIL_DISABLED -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ENVIO_NO_DISPONIBLE",
+                        "La emisión de invitaciones requiere configuración.");
+                case INVALID_ZONE -> validation(List.of(new Field("zonaHoraria", "VALOR_INVALIDO",
+                        "Use una zona horaria reconocida por el sistema.")));
             };
         }
         if (failure instanceof AccessDeniedException) {

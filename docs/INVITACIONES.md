@@ -35,4 +35,4 @@ La función se activa con `mspi.invitations.enabled=true`. Antes de activarla, a
 
 Se configuran STARTTLS obligatorio, verificación del servidor y tiempos de espera para conexión, lectura y escritura. El proveedor y sus secretos quedan a cargo del entorno. La salud general queda separada del relay SMTP. [Configuración de correo en Spring Boot](https://docs.spring.io/spring-boot/reference/io/email.html).
 
-Las pruebas usan 72 horas y una longitud mínima de 15 como datos de prueba. Las empresas y cuentas son ficticias. El buzón de prueba registra el mensaje sin contactar un relay externo. El aprovisionamiento de la primera invitación por AP se integra en HU-010 y los listados administrativos en HU-011.
+Las pruebas usan 72 horas y una longitud mínima de 15 como datos de prueba. Las empresas y cuentas son ficticias. El buzón de prueba registra el mensaje sin contactar un relay externo. HU-010 integra la primera invitación por AP con la activación de la empresa. Los listados administrativos corresponden a HU-011. [Ciclo de empresas](CICLO-EMPRESAS.md).
