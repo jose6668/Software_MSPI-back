@@ -38,8 +38,8 @@ class SchemaMigrationTests {
         var firstFlyway = database.tenantFlyway(first);
         var secondFlyway = database.tenantFlyway(second);
 
-        assertThat(firstFlyway.migrate().migrationsExecuted).isEqualTo(1);
-        assertThat(secondFlyway.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(firstFlyway.migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(secondFlyway.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(firstFlyway.migrate().migrationsExecuted).isZero();
         assertThat(secondFlyway.migrate().migrationsExecuted).isZero();
         assertThat(database.commonFlyway().migrate().migrationsExecuted).isZero();
@@ -53,14 +53,14 @@ class SchemaMigrationTests {
         assertThat(cliOutput.toString(StandardCharsets.UTF_8)).contains("0 migraciones aplicadas");
 
         for (var flyway : List.of(database.commonFlyway(), firstFlyway, secondFlyway)) {
-            String expected = "comun".equals(flyway.getConfiguration().getDefaultSchema()) ? "8" : "1";
+            String expected = "comun".equals(flyway.getConfiguration().getDefaultSchema()) ? "8" : "2";
             assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(expected);
             assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         }
         try (var connection = database.admin()) {
             for (var schema : List.of("comun", first.scope().schema(), second.scope().schema())) {
                 assertThat(query(connection, "SELECT count(*) FROM " + schema + ".flyway_schema_history WHERE success"))
-                        .isEqualTo("comun".equals(schema) ? 8L : 1L);
+                        .isEqualTo("comun".equals(schema) ? 8L : 2L);
             }
             assertThat(query(connection, "SELECT estado FROM comun.empresas WHERE id = '" + first.scope().companyId() + "'"))
                     .isEqualTo("EN_PREPARACION");

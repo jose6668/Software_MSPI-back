@@ -12,12 +12,14 @@ final class PreparationJournal {
 
     private final Connection connection;
     private final MigrationScope scope;
+    private final boolean upgrade;
     private final UUID attemptId = UUID.randomUUID();
     private long registryRevision;
 
-    PreparationJournal(Connection connection, MigrationScope scope) {
+    PreparationJournal(Connection connection, MigrationScope scope, boolean upgrade) {
         this.connection = connection;
         this.scope = scope;
+        this.upgrade = upgrade;
     }
 
     UUID attemptId() {
@@ -26,16 +28,19 @@ final class PreparationJournal {
 
     void begin() throws SQLException {
         try (var statement = connection.prepareStatement("""
-                UPDATE comun.empresas SET estado = 'EN_PREPARACION', version_estructura = NULL,
+                UPDATE comun.empresas SET estado = ?, version_estructura = NULL,
                     revision_registro = revision_registro + 1
-                WHERE id = ? AND esquema_interno = ? AND estado IN ('EN_PREPARACION', 'ERROR_APROVISIONAMIENTO')
+                WHERE id = ? AND esquema_interno = ? AND estado IN (?, ?)
                 RETURNING revision_registro
                 """)) {
-            statement.setObject(1, scope.companyId());
-            statement.setString(2, scope.schema());
+            statement.setString(1, pendingState());
+            statement.setObject(2, scope.companyId());
+            statement.setString(3, scope.schema());
+            statement.setString(4, pendingState());
+            statement.setString(5, upgrade ? pendingState() : "ERROR_APROVISIONAMIENTO");
             try (var result = statement.executeQuery()) {
                 if (!result.next()) {
-                    throw new IllegalArgumentException("Se requiere una empresa reservada o con fallo de aprovisionamiento.");
+                    throw new IllegalArgumentException("La empresa no está en el estado requerido para la operación técnica.");
                 }
                 registryRevision = result.getLong(1);
             }
@@ -73,12 +78,13 @@ final class PreparationJournal {
     void finish(Result result) throws SQLException {
         try (var statement = connection.prepareStatement("""
                 UPDATE comun.empresas SET estado = ?, version_estructura = ?, revision_registro = revision_registro + 1
-                WHERE id = ? AND estado = 'EN_PREPARACION' AND revision_registro = ?
+                WHERE id = ? AND estado = ? AND revision_registro = ?
                 """)) {
-            statement.setString(1, result == Result.FALLIDO ? "ERROR_APROVISIONAMIENTO" : "EN_PREPARACION");
+            statement.setString(1, result == Result.FALLIDO && !upgrade ? "ERROR_APROVISIONAMIENTO" : pendingState());
             statement.setString(2, result == Result.VERIFICADO ? SchemaMigrator.TENANT_STRUCTURE_VERSION : null);
             statement.setObject(3, scope.companyId());
-            statement.setLong(4, registryRevision);
+            statement.setString(4, pendingState());
+            statement.setLong(5, registryRevision);
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("El registro de la empresa cambió durante la preparación.");
             }
@@ -91,5 +97,9 @@ final class PreparationJournal {
             statement.executeUpdate();
         }
         connection.commit();
+    }
+
+    private String pendingState() {
+        return upgrade ? "SUSPENDIDA" : "EN_PREPARACION";
     }
 }

@@ -150,15 +150,15 @@ class TenantIsolationTests {
 
     @Test void rechecksSuspensionVersionAndAccessOnEachNewUnit() throws Exception {
         try {
-            fixture.metadata(fixture.first, "SUSPENDIDA", "1");
+            fixture.metadata(fixture.first, "SUSPENDIDA", "2");
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
             fixture.metadata(fixture.first, "ACTIVA", "999");
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
-            fixture.metadata(fixture.first, "ACTIVA", "1");
+            fixture.metadata(fixture.first, "ACTIVA", "2");
             fixture.grants.get(fixture.actor).remove(a());
             assertThatThrownBy(() -> value(a())).isInstanceOf(AccessDeniedException.class);
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "1");
+            fixture.metadata(fixture.first, "ACTIVA", "2");
             fixture.grants.get(fixture.actor).add(a());
         }
         assertThat(value(a())).isEqualTo("A");

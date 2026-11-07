@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.6.0'
+  version: '1.7.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -241,6 +241,265 @@ paths:
         '406':
           $ref: '#/components/responses/Problem'
         '500':
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/procesos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarProcesos
+      summary: Lista los procesos de la empresa
+      description: Requiere AE, GS o AU de la empresa activa. El filtro responsableId permite revisar referencias antes de archivar.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/CatalogState'
+        - $ref: '#/components/parameters/ResponsibleFilter'
+      responses:
+        '200':
+          description: Lista los procesos de la empresa
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProcessPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearProceso
+      summary: Crea un proceso activo
+      description: Requiere AE o GS de la empresa activa. El responsable opcional debe estar activo y pertenecer a la empresa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewBusinessProcess'
+      responses:
+        '201':
+          description: Crea un proceso activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProcess'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/procesos/{procesoId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/BusinessProcessId'
+    get:
+      operationId: consultarProceso
+      summary: Consulta un proceso local
+      description: Requiere AE, GS o AU de la empresa activa.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta un proceso local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProcess'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: editarProceso
+      summary: Actualiza un proceso activo
+      description: Requiere AE o GS de la empresa activa. Exige revisión vigente y valida las nuevas referencias.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditBusinessProcess'
+      responses:
+        '200':
+          description: Actualiza un proceso activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProcess'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/procesos/{procesoId}/archivar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/BusinessProcessId'
+    post:
+      operationId: archivarProceso
+      summary: Archiva un proceso local
+      description: Requiere AE o GS de la empresa activa. Exige revisión vigente y motivo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveCatalogRecord'
+      responses:
+        '200':
+          description: Archiva un proceso local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessProcess'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/responsables-negocio:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarResponsablesNegocio
+      summary: Lista responsables de negocio
+      description: Requiere AE, GS o AU de la empresa activa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - $ref: '#/components/parameters/CatalogState'
+      responses:
+        '200':
+          description: Lista responsables de negocio
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessResponsiblePage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearResponsableNegocio
+      summary: Crea un responsable de negocio activo
+      description: Requiere AE o GS de la empresa activa. El vínculo opcional a una membresía local no concede acceso.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewBusinessResponsible'
+      responses:
+        '201':
+          description: Crea un responsable de negocio activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessResponsible'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/responsables-negocio/{responsableId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/BusinessResponsibleId'
+    get:
+      operationId: consultarResponsableNegocio
+      summary: Consulta un responsable de negocio local
+      description: Requiere AE, GS o AU de la empresa activa.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta un responsable de negocio local
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessResponsible'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: editarResponsableNegocio
+      summary: Actualiza un responsable de negocio activo
+      description: Requiere AE o GS de la empresa activa. Exige revisión vigente.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditBusinessResponsible'
+      responses:
+        '200':
+          description: Actualiza un responsable de negocio activo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessResponsible'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/responsables-negocio/{responsableId}/archivar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/BusinessResponsibleId'
+    post:
+      operationId: archivarResponsableNegocio
+      summary: Archiva un responsable de negocio
+      description: Requiere AE o GS de la empresa activa. Conserva las referencias existentes e impide nuevas asignaciones.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveCatalogRecord'
+      responses:
+        '200':
+          description: Archiva un responsable de negocio
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessResponsible'
+        default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/configuracion:
     parameters:
@@ -635,6 +894,24 @@ components:
       name: MSPISESSION
       description: Cookie HttpOnly del servidor. El POST recibe la cookie previa obtenida al consultar CSRF.
   parameters:
+    BusinessProcessId:
+      name: procesoId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    BusinessResponsibleId:
+      name: responsableId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    CatalogState:
+      name: estado
+      in: query
+      schema: {type: string, enum: [ACTIVO, ARCHIVADO]}
+    ResponsibleFilter:
+      name: responsableId
+      in: query
+      schema: {type: string, format: uuid}
     CompanyMember:
       name: membresiaId
       in: path
@@ -729,6 +1006,87 @@ components:
               revisionEsperada: {type: integer, format: int64, minimum: 1}
               motivo: {type: string, minLength: 1, maxLength: 1000}
   schemas:
+    BusinessProcess:
+      type: object
+      additionalProperties: false
+      required: [procesoId, nombre, descripcion, responsableId, estado, revision]
+      properties:
+        procesoId: {type: string, format: uuid}
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        descripcion: {type: [string, 'null']}
+        responsableId: {type: [string, 'null'], format: uuid}
+        estado: {type: string, enum: [ACTIVO, ARCHIVADO]}
+        revision: {type: integer, format: int64, minimum: 0}
+    NewBusinessProcess:
+      type: object
+      additionalProperties: false
+      required: [nombre]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        descripcion: {type: [string, 'null']}
+        responsableId: {type: [string, 'null'], format: uuid}
+    EditBusinessProcess:
+      type: object
+      additionalProperties: false
+      required: [nombre, revisionEsperada]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        descripcion: {type: [string, 'null']}
+        responsableId: {type: [string, 'null'], format: uuid}
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+    BusinessResponsible:
+      type: object
+      additionalProperties: false
+      required: [responsableId, nombre, tipo, membresiaId, estado, revision]
+      properties:
+        responsableId: {type: string, format: uuid}
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        tipo: {type: string, enum: [PERSONA, CARGO, AREA]}
+        membresiaId: {type: [string, 'null'], format: uuid}
+        estado: {type: string, enum: [ACTIVO, ARCHIVADO]}
+        revision: {type: integer, format: int64, minimum: 0}
+    NewBusinessResponsible:
+      type: object
+      additionalProperties: false
+      required: [nombre, tipo]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        tipo: {type: string, enum: [PERSONA, CARGO, AREA]}
+        membresiaId: {type: [string, 'null'], format: uuid}
+    EditBusinessResponsible:
+      type: object
+      additionalProperties: false
+      required: [nombre, tipo, revisionEsperada]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 200}
+        tipo: {type: string, enum: [PERSONA, CARGO, AREA]}
+        membresiaId: {type: [string, 'null'], format: uuid}
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+    ArchiveCatalogRecord:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    BusinessProcessPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/BusinessProcess'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    BusinessResponsiblePage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/BusinessResponsible'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     RecoveryRequest:
       type: object
       additionalProperties: false

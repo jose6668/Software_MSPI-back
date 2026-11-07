@@ -13,10 +13,10 @@ import org.flywaydb.core.api.FlywayException;
 import static software.mspi.empresas.internal.migration.PreparationJournal.Result;
 import static software.mspi.empresas.internal.migration.PreparationJournal.Step;
 
-/** Coordinates the initial technical preparation outside ordinary application startup. */
+/** Coordinates preparation and upgrades outside ordinary application startup. */
 final class TenantPreparation {
 
-    int run(MigrationScope scope, Map<String, String> environment, PrintStream output, PrintStream error)
+    int run(MigrationScope scope, boolean upgrade, Map<String, String> environment, PrintStream output, PrintStream error)
             throws SQLException {
         String url = environment.get("MSPI_MIGRATION_JDBC_URL");
         SchemaMigrator.requirePostgresUrl(url);
@@ -32,11 +32,11 @@ final class TenantPreparation {
                 return 1;
             }
             connection.setAutoCommit(false);
-            var journal = new PreparationJournal(connection, scope);
+            var journal = new PreparationJournal(connection, scope, upgrade);
             journal.begin();
             var step = Step.APROVISIONAR;
             try {
-                bootstrap(connection, scope);
+                bootstrap(connection, scope, upgrade);
                 journal.advance(Step.CREDENCIALES);
                 step = Step.CREDENCIALES;
 
@@ -64,8 +64,9 @@ final class TenantPreparation {
                 }
                 TenantRuntimeVerifier.verify(scope, url, runtimePassword);
                 journal.finish(Result.VERIFICADO);
-                output.printf("Intento %s: estructura %s verificada. Empresa en preparación.%n",
-                        journal.attemptId(), SchemaMigrator.TENANT_STRUCTURE_VERSION);
+                output.printf("Intento %s: estructura %s verificada. Empresa %s.%n",
+                        journal.attemptId(), SchemaMigrator.TENANT_STRUCTURE_VERSION,
+                        upgrade ? "suspendida" : "en preparación");
                 return 0;
             } catch (SQLException | IOException | FlywayException | IllegalArgumentException | IllegalStateException failure) {
                 error.printf("Intento %s: fallo en %s.%n", journal.attemptId(), step);
@@ -76,9 +77,13 @@ final class TenantPreparation {
         }
     }
 
-    private static void bootstrap(Connection connection, MigrationScope scope) throws IOException, SQLException {
-        try (var statement = connection.prepareStatement("SELECT set_config('mspi.preparation_company', ?, true)")) {
+    private static void bootstrap(Connection connection, MigrationScope scope, boolean upgrade)
+            throws IOException, SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT set_config('mspi.preparation_company', ?, true), set_config('mspi.upgrade_tenant', ?, true)
+                """)) {
             statement.setString(1, scope.companyId().toString());
+            statement.setString(2, Boolean.toString(upgrade));
             statement.execute();
         }
         try (var resource = TenantPreparation.class.getResourceAsStream("/db/provisioning/tenant-bootstrap.sql")) {

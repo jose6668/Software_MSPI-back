@@ -113,7 +113,7 @@ Las fichas registran el estado y la evidencia de [HU-001](hu/HU-001.md), [HU-002
 
 ### Funcionalidades operativas
 
-La primera funcionalidad completa aún no está seleccionada en APR-08. Se recomienda **CU-09, procesos y responsables**, porque entrega un flujo acotado y prepara las referencias necesarias para activos. HU-013 es esa candidata; la recomendación no se registra como aprobación del caso de uso. Activos y clasificación continúan en HU-014/015.
+APR-08 deja abierta la primera funcionalidad completa. La secuencia de trabajo por HU continúa con **CU-09, procesos y responsables**, porque prepara las referencias necesarias para activos. Activos y clasificación continúan en HU-014/015.
 
 | HU | Historia y resultado | Criterios de aceptación mínimos | Referencias y dependencias |
 | --- | --- | --- | --- |
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-011 quedaron integradas mediante PR #1 a #11. **HU-012** cubre la recuperación de acceso por enlace al correo verificado. [Ficha de HU-012](hu/HU-012.md).
+HU-001 a HU-012 quedaron integradas mediante PR #1 a #12. **HU-013** cubre procesos y responsables de negocio. [Ficha de HU-013](hu/HU-013.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.

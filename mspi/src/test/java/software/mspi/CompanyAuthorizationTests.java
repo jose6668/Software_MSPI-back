@@ -55,7 +55,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {"mspi.tenancy.enabled=true", "mspi.tenancy.max-pools=2",
-        "mspi.tenancy.connections-per-pool=1", "mspi.tenancy.connection-timeout=5s", "mspi.tenancy.idle-ttl=30s"})
+        "mspi.tenancy.connections-per-pool=1", "mspi.tenancy.connection-timeout=5s", "mspi.tenancy.idle-ttl=30s",
+        "mspi.identity.attempts-per-address=60"})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import({PostgresTestConfiguration.class, CompanyAuthorizationTests.Fixtures.class,
@@ -68,6 +69,8 @@ class CompanyAuthorizationTests {
     private static final String MEMBERS = "/api/v1/empresas/{empresaId}/membresias";
     private static final String RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables";
     private static final String ROLES = MEMBERS + "/{membresiaId}/roles";
+    private static final String PROCESSES = "/api/v1/empresas/{empresaId}/procesos";
+    private static final String BUSINESS_RESPONSIBLES = "/api/v1/empresas/{empresaId}/responsables-negocio";
     private static final String PROBE = "/api/v1/pruebas-autorizacion/{empresaId}";
     private static final UUID SHARED = TenantIsolationFixture.SHARED_ID;
 
@@ -107,7 +110,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "1");
+            fixture.metadata(fixture.third, "ACTIVA", "2");
         }
     }
 
@@ -150,13 +153,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "1");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "2");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "1");
+            fixture.metadata(fixture.first, "ACTIVA", "2");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -389,7 +392,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '1' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '2' WHERE id = ?", company);
         return company;
     }
 
@@ -420,6 +423,158 @@ class CompanyAuthorizationTests {
                 return rows.getLong(1);
             }
         }
+    }
+
+    @Test
+    void businessCatalogHonorsRolesCsrfAndCompanyScope() throws Exception {
+        var editor = account();
+        var auditor = account();
+        var responsible = account();
+        member(editor, a(), "GS");
+        member(auditor, a(), "AU");
+        member(responsible, a(), "RA");
+        var gs = login(editor);
+        var au = login(auditor);
+        var ra = login(responsible);
+        mvc.perform(get(PROCESSES, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(PROCESSES, a()).session(au)).andExpect(status().isOk());
+        mvc.perform(get(BUSINESS_RESPONSIBLES, a()).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(PROCESSES, b()).session(gs)).andExpect(status().isForbidden());
+        catalogPost(PROCESSES, a(), au, Map.of("nombre", "Denegado")).andExpect(status().isForbidden());
+        mvc.perform(post(PROCESSES, a()).session(gs).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Sin CSRF\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALIDO"));
+        catalogPost(PROCESSES, a(), gs, Map.of("nombre", " ", "incluidoAlcance", true))
+                .andExpect(status().isBadRequest());
+        catalogPost(BUSINESS_RESPONSIBLES, a(), gs, Map.of("nombre", "Tipo inválido", "tipo", "AP"))
+                .andExpect(status().isBadRequest());
+        var created = catalogPost(PROCESSES, a(), gs, Map.of("nombre", "Operación"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("ACTIVO")).andReturn();
+        UUID id = id(created, "procesoId");
+        mvc.perform(get(PROCESSES + "/{id}", a(), id).session(au)).andExpect(status().isOk());
+        assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                + ".eventos_actividad WHERE objeto_id = ? AND actor_id = ? AND accion = 'CREAR' AND correlacion_id = ?",
+                id, editor.id(), UUID.fromString(created.getResponse().getHeader("X-Correlation-Id")))).isOne();
+    }
+
+    @Test
+    void refusesForeignReferencesAtApiAndDatabaseAndUsesLocalCredentials() throws Exception {
+        var editor = account();
+        UUID memberA = member(editor, a(), "GS");
+        UUID memberB = member(editor, b(), "GS");
+        var session = login(editor);
+        var foreign = catalogPost(BUSINESS_RESPONSIBLES, b(), session,
+                Map.of("nombre", "Operaciones", "tipo", "AREA", "membresiaId", memberB))
+                .andExpect(status().isCreated()).andReturn();
+        UUID foreignResponsible = id(foreign, "responsableId");
+        catalogPost(PROCESSES, a(), session, Map.of("nombre", "Proceso ajeno", "responsableId", foreignResponsible))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        catalogPost(BUSINESS_RESPONSIBLES, a(), session, Map.of("nombre", "Ajeno", "tipo", "AREA", "membresiaId", memberB))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        mvc.perform(get(BUSINESS_RESPONSIBLES + "/{id}", a(), foreignResponsible).session(session))
+                .andExpect(status().isNotFound());
+        catalogPost(BUSINESS_RESPONSIBLES, a(), session, Map.of("nombre", "Local", "tipo", "PERSONA", "membresiaId", memberA))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.membresiaId").value(memberA.toString()));
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM " + fixture.second.scope().schema() + ".procesos"), "42501");
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM comun.membresias"), "42501");
+            assertSqlState(() -> statement.executeUpdate("DELETE FROM procesos"), "42501");
+            assertSqlState(() -> statement.executeUpdate("UPDATE eventos_actividad SET accion = 'ALTERAR'"), "42501");
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO responsables_negocio(id, empresa_id, nombre, tipo, membresia_id, estado, revision)
+                    VALUES (?, ?, 'Ajeno', 'AREA', ?, 'ACTIVO', 0)
+                    """)) {
+                insert.setObject(1, UUID.randomUUID());
+                insert.setObject(2, a());
+                insert.setObject(3, memberB);
+                assertSqlState(insert::executeUpdate, "23503");
+            }
+        }
+    }
+
+    @Test
+    void archivesWithoutLosingDependenciesAndRejectsNewArchivedAssignments() throws Exception {
+        var editor = account();
+        member(editor, b(), "AE");
+        var session = login(editor);
+        var responsible = catalogPost(BUSINESS_RESPONSIBLES, b(), session, Map.of("nombre", "Mesa", "tipo", "CARGO"))
+                .andExpect(status().isCreated()).andReturn();
+        UUID responsibleId = id(responsible, "responsableId");
+        var created = catalogPost(PROCESSES, b(), session, Map.of("nombre", "Atención", "responsableId", responsibleId))
+                .andExpect(status().isCreated()).andReturn();
+        UUID processId = id(created, "procesoId");
+        mvc.perform(get(PROCESSES, b()).session(session).param("responsableId", responsibleId.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].procesoId").value(processId.toString()));
+        catalogPost(BUSINESS_RESPONSIBLES + "/{id}/archivar", b(), session,
+                Map.of("revisionEsperada", 0, "motivo", "Rotación"), responsibleId)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("ARCHIVADO"))
+                .andExpect(jsonPath("$.revision").value(1));
+        mvc.perform(get(PROCESSES + "/{id}", b(), processId).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.responsableId").value(responsibleId.toString()));
+        catalogPost(PROCESSES, b(), session, Map.of("nombre", "Nuevo", "responsableId", responsibleId))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REFERENCIA_NO_DISPONIBLE"));
+        catalogPut(PROCESSES, b(), processId, session,
+                Map.of("revisionEsperada", 0, "nombre", "Atención editada", "responsableId", responsibleId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
+        catalogPost(PROCESSES + "/{id}/archivar", b(), session, Map.of("revisionEsperada", 1, "motivo", "Cierre"), processId)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("ARCHIVADO"));
+        catalogPut(PROCESSES, b(), processId, session, Map.of("revisionEsperada", 2, "nombre", "No editable"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REGISTRO_ARCHIVADO"));
+        assertThat(count("""
+                SELECT count(*) FROM %s.eventos_actividad
+                WHERE objeto_id = ? AND estado_anterior = 'ACTIVO' AND estado_nuevo = 'ARCHIVADO'
+                    AND motivo = 'Cierre'
+                """.formatted(fixture.second.scope().schema()), processId)).isOne();
+    }
+
+    @Test
+    void concurrentCatalogUpdatesRejectAStaleRevisionAndAuditOnlyTheWinner() throws Exception {
+        var editor = account();
+        member(editor, a(), "GS");
+        var session = login(editor);
+        var entry = catalogPost(BUSINESS_RESPONSIBLES, a(), session, Map.of("nombre", "Equipo", "tipo", "AREA"))
+                .andExpect(status().isCreated()).andReturn();
+        UUID id = id(entry, "responsableId");
+        var barrier = new CyclicBarrier(2);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPut(BUSINESS_RESPONSIBLES, a(), id, session,
+                        Map.of("nombre", "Equipo A", "tipo", "AREA", "revisionEsperada", 0)).andReturn();
+            });
+            var second = executor.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPut(BUSINESS_RESPONSIBLES, a(), id, session,
+                        Map.of("nombre", "Equipo B", "tipo", "AREA", "revisionEsperada", 0)).andReturn();
+            });
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .extracting(result -> result.getResponse().getStatus()).containsExactlyInAnyOrder(200, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                + ".eventos_actividad WHERE objeto_id = ? AND accion = 'EDITAR'", id)).isOne();
+    }
+
+    private ResultActions catalogPost(String path, UUID company, MockHttpSession session, Object input, Object... tail)
+            throws Exception {
+        var variables = new java.util.ArrayList<>();
+        variables.add(company);
+        variables.addAll(List.of(tail));
+        return mvc.perform(post(path, variables.toArray()).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(input)));
+    }
+
+    private ResultActions catalogPut(String path, UUID company, UUID id, MockHttpSession session, Object input)
+            throws Exception {
+        return mvc.perform(put(path + "/{id}", company, id).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(input)));
+    }
+
+    private UUID id(org.springframework.test.web.servlet.MvcResult result, String field) {
+        return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray()).path(field).asString());
     }
 
     private UUID a() { return fixture.first.scope().companyId(); }

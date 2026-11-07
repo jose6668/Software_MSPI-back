@@ -22,15 +22,15 @@ public final class MigrationCli {
     public static int run(String[] args, Map<String, String> environment, PrintStream output, PrintStream error) {
         try {
             MigrationScope scope;
-            if (args.length == 2 && "prepare".equals(args[0])) {
+            if (args.length == 2 && ("prepare".equals(args[0]) || "upgrade".equals(args[0]))) {
                 return new TenantPreparation().run(MigrationScope.tenant(UUID.fromString(args[1])),
-                        environment, output, error);
+                        "upgrade".equals(args[0]), environment, output, error);
             } else if (args.length == 1 && "common".equals(args[0])) {
                 scope = MigrationScope.common();
             } else if (args.length == 2 && "tenant".equals(args[0])) {
                 scope = MigrationScope.tenant(UUID.fromString(args[1]));
             } else {
-                error.println("Uso: common | tenant <empresa-uuid> | prepare <empresa-uuid>");
+                error.println("Uso: common | tenant <empresa-uuid> | prepare <empresa-uuid> | upgrade <empresa-uuid>");
                 return 2;
             }
 
