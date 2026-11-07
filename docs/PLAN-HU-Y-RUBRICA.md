@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-009 quedaron integradas mediante PR #1 a #9. **HU-010** establece el alta, la suspensión y la reactivación de empresas. Después de integrarla corresponde **HU-011**, sobre configuración y administración de membresías. Consultar la [ficha de HU-010](hu/HU-010.md).
+HU-001 a HU-010 quedaron integradas mediante PR #1 a #10. **HU-011** cubre la configuración básica y la administración de membresías. La recuperación de acceso corresponde a HU-012 y depende de sus políticas y canal. [Ficha de HU-011](hu/HU-011.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.
