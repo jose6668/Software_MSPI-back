@@ -4,6 +4,8 @@ Plan de implementación por historias de usuario, criterios de aceptación y rú
 
 Cada HU se desarrolla en una rama propia y se entrega mediante un PR hacia `Develop`, con pruebas y evidencias según su alcance.
 
+La API empieza en `GET /api/v1` con la versión del contrato. Las convenciones de entrada, errores y correlación están en el [contrato REST](docs/CONTRATO-REST.md) y su [especificación OpenAPI](mspi/src/main/resources/openapi/v1.yaml).
+
 ## Construcción y pruebas
 
 Requisitos: JDK 17 completo, Docker con contenedores Linux y acceso a Maven Central y Docker Hub para la primera descarga. No hace falta instalar Maven o PostgreSQL: el wrapper fija Maven 3.10.0 y Testcontainers inicia PostgreSQL `17.11-alpine` temporalmente.

@@ -1,0 +1,113 @@
+openapi: 3.1.0
+info:
+  title: API MSPI
+  version: '1.0.0'
+  description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
+paths:
+  /api/v1:
+    get:
+      operationId: consultarVersionApi
+      summary: Consulta la versión del contrato
+      responses:
+        '200':
+          description: Versión de la API
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiVersion'
+              example:
+                version: v1
+        '406':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+    head:
+      operationId: consultarCabecerasVersionApi
+      summary: Consulta las cabeceras de la versión
+      responses:
+        '200':
+          description: Cabeceras de la respuesta GET
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        '406':
+          description: Tipo de respuesta no aceptable
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+        '500':
+          description: Error interno
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+components:
+  headers:
+    CorrelationId:
+      description: UUID generado por el servidor para esta solicitud
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: Error HTTP con código estable y correlación
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/CorrelationId'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ApiProblem'
+  schemas:
+    ApiVersion:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          type: string
+          const: v1
+    ApiProblem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, detail, instance, code, correlationId, fields]
+      properties:
+        type:
+          type: string
+          const: 'about:blank'
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+          description: URN con el UUID de correlación
+        code:
+          type: string
+          description: Código estable para consumidores
+        correlationId:
+          type: string
+          format: uuid
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiFieldProblem'
+    ApiFieldProblem:
+      type: object
+      additionalProperties: false
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+        code:
+          type: string
+        message:
+          type: string

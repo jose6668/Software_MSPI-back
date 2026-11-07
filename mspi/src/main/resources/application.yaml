@@ -1,6 +1,15 @@
 spring:
   application:
     name: mspi
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      accept-float-as-int: false
+      fail-on-trailing-tokens: true
+    mapper:
+      allow-coercion-of-scalars: false
+    read:
+      strict-duplicate-detection: true
   flyway:
     enabled: false
   sql:
