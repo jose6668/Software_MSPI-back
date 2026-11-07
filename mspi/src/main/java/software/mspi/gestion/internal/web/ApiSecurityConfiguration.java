@@ -47,6 +47,8 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.HEAD, "/api/v1").permitAll()
                         .requestMatchers(HttpMethod.GET, ApiSessionController.CSRF).permitAll()
                         .requestMatchers(HttpMethod.POST, ApiSessionController.SESSION).permitAll()
+                        .requestMatchers(HttpMethod.GET, ApiCompanyController.MINE, ApiCompanyController.CONTEXT)
+                        .authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

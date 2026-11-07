@@ -23,19 +23,22 @@ final class ScopedTenantUnitOfWork implements TenantUnitOfWork {
         this.context = context; this.transactions = transactions;
     }
 
-    @Override public <T> T execute(UUID actor, UUID company, Supplier<T> operation) {
+    @Override public <T> T execute(UUID actor, UUID company, CompanyPermission permission, Supplier<T> operation) {
         Objects.requireNonNull(actor, "actor");
         Objects.requireNonNull(company, "company");
+        Objects.requireNonNull(permission, "permission");
         Objects.requireNonNull(operation, "operation");
         var existing = context.current();
         if (existing != null) {
-            if (!existing.actor.equals(actor) || !existing.company.equals(company)) existing.rejectChange();
+            if (!existing.actor.equals(actor) || !existing.company.equals(company) || existing.permission != permission) {
+                existing.rejectChange();
+            }
             return operation.get();
         }
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Inicie la unidad empresarial fuera de otras transacciones.");
         }
-        policy.requireAccess(actor, company);
+        policy.requireAccess(actor, company, permission);
         var entry = registry.findById(company)
                 .orElseThrow(() -> new AccessDeniedException("Empresa no operable."));
         if (!"ACTIVA".equals(entry.getState())
@@ -45,7 +48,7 @@ final class ScopedTenantUnitOfWork implements TenantUnitOfWork {
         }
 
         try (var lease = pools.reserve(company)) {
-            var frame = new TenantContext.Frame(actor, company, lease);
+            var frame = new TenantContext.Frame(actor, company, permission, lease);
             context.bind(frame);
             try {
                 return transactions.execute(status -> {

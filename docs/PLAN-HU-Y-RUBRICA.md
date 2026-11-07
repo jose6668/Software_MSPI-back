@@ -82,7 +82,7 @@ Reglas obligatorias:
 
 ## 5. Backlog propuesto y secuencia
 
-Las fichas registran el estado y la evidencia de [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md), [HU-004](hu/HU-004.md), [HU-005](hu/HU-005.md), [HU-006](hu/HU-006.md) y [HU-007](hu/HU-007.md). El resto permanece en estado **Propuesta**. Los números identifican historias y el orden depende de sus prerrequisitos.
+Las fichas registran el estado y la evidencia de [HU-001](hu/HU-001.md), [HU-002](hu/HU-002.md), [HU-003](hu/HU-003.md), [HU-004](hu/HU-004.md), [HU-005](hu/HU-005.md), [HU-006](hu/HU-006.md), [HU-007](hu/HU-007.md) y [HU-008](hu/HU-008.md). El resto permanece en estado **Propuesta**. Los números identifican historias y el orden depende de sus prerrequisitos.
 
 ### Etapa inicial: estructura y entorno reproducible
 
@@ -232,6 +232,6 @@ Diagnóstico del backend sobre `Develop`, commit `01afba1397bdbe821dec79102a1ef8
 
 La documentación `964249c` corrige las tres precisiones revisadas: aprobar/devolver entrega propia frente a consultarla; AT-05 de política frente a integral; escenarios AIS en documento 07 y AT en documento 08.
 
-HU-001 a HU-006 quedaron integradas mediante PR #1 a #6. **HU-007** establece el inicio y cierre de sesión. Después de integrarla corresponde **HU-008**, sobre membresías y permisos por empresa. Consultar la [ficha de HU-007](hu/HU-007.md).
+HU-001 a HU-007 quedaron integradas mediante PR #1 a #7. **HU-008** establece las membresías y permisos por empresa. Después de integrarla corresponde **HU-009**, sobre emisión y aceptación de invitaciones. Consultar la [ficha de HU-008](hu/HU-008.md).
 
 La elaboración original de este archivo y la plantilla de PR fue preparación de trabajo, sin implementar HU ni crear ramas, commits o PR. La ejecución posterior se registra en la ficha de cada historia.

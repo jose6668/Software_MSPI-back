@@ -13,7 +13,6 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.data.repository.config.BootstrapMode;
 import org.springframework.orm.jpa.*;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.support.TransactionTemplate;
 import software.mspi.empresas.api.*;
 import software.mspi.empresas.internal.persistence.JpaFactories;
@@ -29,11 +28,6 @@ import software.mspi.empresas.internal.persistence.tenant.CompanyContextReposito
 public class TenantJpaConfiguration {
     @Bean @ConditionalOnMissingBean(TenantSecretSource.class)
     TenantSecretSource tenantSecrets(Environment environment) { return new EnvironmentTenantSecretSource(environment); }
-
-    @Bean @ConditionalOnMissingBean(TenantAccessPolicy.class)
-    TenantAccessPolicy tenantAccessPolicy() {
-        return (actor, company) -> { throw new AccessDeniedException("Acceso empresarial no autorizado."); };
-    }
 
     @Bean(destroyMethod = "close")
     TenantConnectionPools tenantPools(TenancyProperties limits, TenantSecretSource secrets, ObjectProvider<Clock> clock) {

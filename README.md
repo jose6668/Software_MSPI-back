@@ -8,6 +8,8 @@ La API empieza en `GET /api/v1` con la versión del contrato. Las convenciones d
 
 El inicio y cierre de sesión usan una cookie del servidor y protección CSRF. El flujo HTTP, la preparación técnica de cuentas y los parámetros iniciales están en [Identidad y sesión](docs/SESION.md).
 
+La sesión permite listar empresas propias y consultar el contexto mínimo de una empresa autorizada. [Membresías y permisos](docs/PERMISOS-EMPRESA.md).
+
 ## Construcción y pruebas
 
 Requisitos: JDK 17 completo, Docker con contenedores Linux y acceso a Maven Central y Docker Hub para la primera descarga. No hace falta instalar Maven o PostgreSQL: el wrapper fija Maven 3.10.0 y Testcontainers inicia PostgreSQL `17.11-alpine` temporalmente.
@@ -71,4 +73,4 @@ HU-005 incorpora el comando técnico `prepare <uuid>` para registrar intentos, v
 
 La persistencia común y la empresarial usan unidades JPA distintas. Cada unidad de trabajo empresarial fija actor y empresa durante la transacción, con el runtime exclusivo de esa empresa y pools acotados. Se deshabilitan las cachés compartidas de entidades y consultas.
 
-La función está deshabilitada por defecto y su política inicial deniega acceso. Activarla exige límites explícitos y secretos externos; todavía no publica endpoints ni autentica usuarios reales. Configuración, ciclo de conexión y límites: [Aislamiento JPA](docs/AISLAMIENTO-JPA.md). Criterios y evidencia: [HU-004](docs/hu/HU-004.md).
+La unidad JPA empresarial está deshabilitada por defecto. Activarla exige límites explícitos, secretos externos y autorización por operación. Las consultas del selector usan el registro común. [Aislamiento JPA](docs/AISLAMIENTO-JPA.md) y [permisos por empresa](docs/PERMISOS-EMPRESA.md).
