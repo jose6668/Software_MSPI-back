@@ -1,0 +1,17 @@
+server:
+  port: ${MSPI_HTTPS_PORT:8443}
+  forward-headers-strategy: none
+  ssl:
+    enabled: true
+    key-store: ${MSPI_TLS_KEYSTORE}
+    key-store-password: ${MSPI_TLS_KEYSTORE_PASSWORD}
+    key-store-type: PKCS12
+    key-alias: mspi-server
+    protocol: TLS
+    enabled-protocols: [TLSv1.2, TLSv1.3]
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax

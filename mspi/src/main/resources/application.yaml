@@ -1,4 +1,5 @@
 server:
+  address: 127.0.0.1
   forward-headers-strategy: none
   max-http-request-header-size: 8KB
   tomcat:
