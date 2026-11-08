@@ -12,20 +12,20 @@ La aplicación aplica un control común de admisión antes de CSRF, validación 
 | mspi.load.concurrent-requests | 32 | Solicitudes simultáneas dentro de las cadenas de seguridad |
 | mspi.load.concurrent-evidence | 2 | Cupo compartido para rutas de evidencias y cualquier cuerpo multipart, incluso en rutas no autorizadas |
 | mspi.load.max-sessions | 256 | Sesiones creadas a través del control; tanto anónimas como autenticadas |
-| mspi.load.json-bytes | 65536 | Tamaño de cuerpos no multipart, tanto declarado como efectivamente leído |
+| mspi.load.json-bytes | 65536 | Tamaño declarado de cuerpos no multipart y tamaño real de cuerpos leídos por el flujo, incluidos JSON |
 | mspi.load.multipart-bytes | 10016384 | Rechazo temprano del tamaño declarado de multipart; el límite real de multipart lo aplica también spring.servlet.multipart.max-request-size |
 
 Un exceso por dirección responde **429 DEMASIADAS_SOLICITUDES**. La falta de cupos o de espacio para nuevas direcciones responde **503 CAPACIDAD_AGOTADA**. Ambas respuestas incluyen Retry-After; este valor orienta cuándo reintentar y no garantiza disponibilidad al vencer. Un cuerpo demasiado grande responde **413 CARGA_DEMASIADO_GRANDE**. Los errores omiten el contenido del cuerpo y usan no-store y correlationId. HEAD conserva el estado y las cabeceras sin cuerpo.
 
 Los contadores y semáforos se comparten entre todos los clientes de esta instancia. Los cupos de solicitudes se liberan en finally, incluidos errores, rechazos de cuerpos y fallos de negocio. La saturación de archivos no ocupa todos los cupos ordinarios. No hay colas de espera dentro del control ni creación de hilos por solicitud.
 
-El cupo de sesión se reserva antes de crearla; se libera al invalidarla o cuando el contenedor la expira. El cambio de identificador de sesión al autenticar conserva el mismo cupo. La expiración depende también del barrido del contenedor. El control no expulsa sesiones existentes para aceptar otras nuevas. Solo la consulta CSRF inicial puede crear una sesión anónima válida por ese flujo; peticiones maliciosas a otras rutas también pasan por la misma cota antes de cualquier creación de sesión por Spring Security.
+El cupo de sesión se reserva antes de crearla; se libera al invalidarla o cuando el contenedor la expira. El cambio de identificador de sesión al autenticar conserva el mismo cupo. La expiración depende también del barrido del contenedor. El control no expulsa sesiones existentes para aceptar otras nuevas. La consulta CSRF inicial y las comprobaciones CSRF de solicitudes inválidas pueden crear sesiones anónimas. Todas pasan por la misma cota antes de cualquier creación de sesión por Spring Security.
 
 ## Servidor HTTP
 
 La configuración base fija 64 hilos de Tomcat, mínimo 4, 128 conexiones y cola de aceptación 32; cabeceras de hasta 8 KiB, espera inicial y keep-alive de 5 segundos y hasta 100 solicitudes por conexión. El descarte de cuerpos rechazados se limita a 64 KiB; el servidor puede cerrar la conexión en cargas grandes. Multipart permite hasta 4 partes y conserva los límites de 10 000 000 bytes por archivo y 10 016 384 por solicitud. Los campos de formulario tienen límite de 64 KiB.
 
-El límite JSON se comprueba sobre el flujo leído, no solo sobre Content-Length. La lectura usa buffers del consumidor sin acumular el cuerpo completo en el filtro. El parser de multipart del contenedor conserva su propio límite; subir mspi.load.multipart-bytes no aumenta ese máximo. Los valores de ambos límites deben mantenerse coherentes si una entrega posterior los cambia.
+El límite JSON se comprueba sobre el flujo leído, no solo sobre Content-Length. La lectura usa buffers del consumidor sin acumular el cuerpo completo en el filtro. La lectura de parámetros de formulario y multipart puede realizarse dentro del contenedor, sin utilizar el flujo del wrapper: esos formatos conservan sus propios límites de 64 KiB para campos y 10 016 384 bytes para multipart. Subir mspi.load.multipart-bytes no aumenta ese máximo. Los valores de ambos límites deben mantenerse coherentes si una entrega posterior los cambia.
 
 Se configura forward-headers-strategy=none: las cuotas usan la dirección remota del contenedor y no X-Forwarded-For enviado por el cliente. En una exposición por proxy se deberá configurar la confianza en intermediarios y probar la identidad del cliente; esto pertenece a la siguiente entrega de HTTPS. El perfil actual no acredita esa exposición.
 

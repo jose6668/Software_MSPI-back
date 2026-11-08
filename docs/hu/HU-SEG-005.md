@@ -11,3 +11,12 @@ Criterios: rechazos 429/503 con Retry-After y 413 para tamaño; cupos liberados 
 Evidencia automatizada: ApiLoadGuardTests, ApiLoadFilterTests, ApiLoadIntegrationTests y la regresión completa del backend en CI. Los resultados y enlaces de ejecución se registran en el PR de esta rama. Las comprobaciones locales de higiene de secretos no sustituyen esa suite.
 
 [Operación, límites y pendientes](../LIMITES-SOBRECARGA.md). H-02 y H-03 no se consideran cerrados globalmente. HTTPS, inspección de contenido malicioso y límites del proceso/SQL requieren entregas posteriores; no se incluye segundo factor. No cambia el esquema común V13 ni el empresarial V7.
+
+## Evidencia de implementación
+
+PR hacia Develop: [#23](https://github.com/jose6668/Software_MSPI-back/pull/23).
+Commit de implementación: 5a71f32e9f3077049762b3cdabd60fa051342655.
+
+[Backend CI](https://github.com/jose6668/Software_MSPI-back/actions/runs/42527468740): **143 pruebas, 0 fallos, 0 errores y 0 omitidas; BUILD SUCCESS**, con Java 17 y PostgreSQL desechable. Incluye 11 pruebas nuevas de límites, concurrencia, sesiones y carga de cuerpos. [Secret hygiene](https://github.com/jose6668/Software_MSPI-back/actions/runs/42527468679): correcto.
+
+Esta evidencia corresponde al commit indicado. Los commits posteriores conservan sus comprobaciones propias en el PR. No representa una medición de capacidad ni un ataque de carga en el equipo del usuario.
