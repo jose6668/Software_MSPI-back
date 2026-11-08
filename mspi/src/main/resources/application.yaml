@@ -1,4 +1,18 @@
 server:
+  forward-headers-strategy: none
+  max-http-request-header-size: 8KB
+  tomcat:
+    threads:
+      max: 64
+      min-spare: 4
+    max-connections: 128
+    accept-count: 32
+    connection-timeout: 5s
+    keep-alive-timeout: 5s
+    max-keep-alive-requests: 100
+    max-swallow-size: 64KB
+    max-part-count: 4
+    max-http-form-post-size: 64KB
   servlet:
     session:
       timeout: 20m
@@ -52,6 +66,15 @@ management:
     mail:
       enabled: false
 mspi:
+  load:
+    window: 1m
+    requests-per-address: 1200
+    tracked-addresses: 1024
+    concurrent-requests: 32
+    concurrent-evidence: 2
+    max-sessions: 256
+    json-bytes: 65536
+    multipart-bytes: 10016384
   evidence:
     enabled: false
   invitations:
