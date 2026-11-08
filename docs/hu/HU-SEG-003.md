@@ -1,6 +1,7 @@
 # HU-SEG-003 — Revocación consistente de sesiones
 
-Estado: implementación y pruebas preparadas; pendiente de validación automatizada en PR.
+Estado: implementación verificada en CI; PR hacia Develop, pendiente de revisión e integración.
+PR: [#21](https://github.com/jose6668/Software_MSPI-back/pull/21).
 Rama: `fix/HU-SEG-003-invalidacion-sesiones`.
 Base: `Develop`, commit `6e878b87c98099ed20536a42d95110ae041ee1d1`.
 
@@ -34,6 +35,14 @@ La prueba de eliminación usa únicamente datos ficticios sin dependencias. No s
 
 ## Evidencia
 
-La validación completa se ejecutará en el PR con Java 17 y PostgreSQL 17.11 desechable. En el equipo local Docker no está disponible y Java predeterminado es 21; no se declara ejecutada localmente la suite Java.
+Commit de implementación: `c1f611b2652b41394ddc7e2f2aa94dd4da5a568e`.
+
+- [Backend CI](https://github.com/jose6668/Software_MSPI-back/actions/runs/42507606812): **115 pruebas, 0 fallos, 0 errores, 0 omitidas; BUILD SUCCESS**, con Java 17 y PostgreSQL 17.11 desechable. Incluye 10 pruebas de sesión y la actualización V12→V13.
+- [Secret hygiene](https://github.com/jose6668/Software_MSPI-back/actions/runs/42507606778): correcto.
+- Comprobaciones locales de archivos, plantillas y pruebas negativas de secretos: correctas; diff sin errores.
+
+En el equipo local Docker no está disponible y Java predeterminado es 21; la suite Java se ejecutó en GitHub Actions. Esta evidencia corresponde al commit indicado; los commits posteriores conservan sus comprobaciones propias en el PR.
+
+El alcance implementado es H-08. H-04 (política uniforme de contraseñas, comprobación de credenciales comprometidas y autenticación reforzada) sigue pendiente y requiere otra entrega. No se considera cerrada toda SEC-005 únicamente con estas pruebas.
 
 Antecedente: HU-SEG-002 integrada mediante [PR #20](https://github.com/jose6668/Software_MSPI-back/pull/20), commit base de esta entrega.
