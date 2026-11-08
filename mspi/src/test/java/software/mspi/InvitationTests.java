@@ -74,6 +74,22 @@ class InvitationTests {
     }
 
     @Test
+    void blockedPasswordsDoNotCreateAccountOrConsumeInvitation() throws Exception {
+        String email = UUID.randomUUID() + "@example.test";
+        var issued = issueToken(ae, company, email, "AU");
+        for (String rejected : new String[]{"12345678901234567890", "PASSWORDPASSWORD"}) {
+            var response = enroll(issued.token(), "Persona", rejected).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDACION"))
+                    .andExpect(jsonPath("$.fields[0].field").value("contrasena")).andReturn();
+            assertThat(response.getResponse().getContentAsString()).doesNotContain(rejected, issued.token());
+        }
+        String password = UUID.randomUUID().toString();
+        var response = enroll(issued.token(), "Persona", password).andExpect(status().isCreated()).andReturn();
+        UUID user = UUID.fromString(json(response, "usuarioId"));
+        assertContext(login(new Account(user, email, password)), "AU");
+    }
+
+    @Test
     void issuesToVerifiedRecipientAndGrantsOnlyOfferedRoles() throws Exception {
         var recipient = account();
         var stranger = account();

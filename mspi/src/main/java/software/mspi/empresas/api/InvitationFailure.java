@@ -2,7 +2,7 @@ package software.mspi.empresas.api;
 
 public final class InvitationFailure extends RuntimeException {
 
-    public enum Reason { UNAVAILABLE, DELIVERY, PASSWORD_LENGTH }
+    public enum Reason { UNAVAILABLE, DELIVERY, PASSWORD_POLICY }
 
     private final Reason reason;
 

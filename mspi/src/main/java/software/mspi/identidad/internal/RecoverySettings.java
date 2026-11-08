@@ -3,6 +3,8 @@ package software.mspi.identidad.internal;
 import java.net.URI;
 import java.time.Duration;
 
+import software.mspi.identidad.api.PasswordPolicy;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("mspi.recovery")
@@ -21,7 +23,7 @@ record RecoverySettings(Duration validity, URI resetUrl, String from, int minPas
                 || resetUrl.getRawUserInfo() != null || resetUrl.getRawFragment() != null || resetUrl.getRawQuery() != null) {
             throw new IllegalArgumentException("Configure una URL HTTPS de recuperación sin consulta, fragmento ni credenciales.");
         }
-        if (from == null || !from.matches("[^\\s@<>]+@[^\\s@<>]+") || minPasswordLength < 1 || minPasswordLength > 1024) {
+        if (from == null || !from.matches("[^\\s@<>]+@[^\\s@<>]+") || !PasswordPolicy.validMinimum(minPasswordLength)) {
             throw new IllegalArgumentException("Configure el remitente y la longitud mínima de recuperación.");
         }
     }

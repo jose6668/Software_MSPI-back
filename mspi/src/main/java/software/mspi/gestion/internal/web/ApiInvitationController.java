@@ -75,7 +75,7 @@ class ApiInvitationController {
 
     record Enroll(@NotNull @Pattern(regexp = TOKEN) String token,
                   @NotBlank @Size(max = 150) String nombreVisible,
-                  @NotEmpty @Size(max = 1024) String contrasena) {
+                  @NotEmpty @Size(min = 15, max = 1024) String contrasena) {
         @Override public String toString() { return "Enroll[redacted]"; }
     }
 }

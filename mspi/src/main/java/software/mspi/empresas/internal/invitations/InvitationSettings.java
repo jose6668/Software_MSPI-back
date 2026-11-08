@@ -3,6 +3,8 @@ package software.mspi.empresas.internal.invitations;
 import java.net.URI;
 import java.time.Duration;
 
+import software.mspi.identidad.api.PasswordPolicy;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("mspi.invitations")
@@ -20,7 +22,7 @@ record InvitationSettings(Duration validity, URI acceptanceUrl, String from, int
         if (from == null || !from.matches("[^\\s@<>]+@[^\\s@<>]+")) {
             throw new IllegalArgumentException("Configure el remitente SMTP de las invitaciones.");
         }
-        if (minPasswordLength < 1 || minPasswordLength > 1024) {
+        if (!PasswordPolicy.validMinimum(minPasswordLength)) {
             throw new IllegalArgumentException("Configure la longitud mínima para cuentas invitadas.");
         }
     }

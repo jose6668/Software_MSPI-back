@@ -63,6 +63,22 @@ class AccountRecoveryTests {
     }
 
     @Test
+    void blockedPasswordsDoNotConsumeRecoveryProofOrChangeCredentials() throws Exception {
+        var user = account("HABILITADA");
+        String token = issue(user);
+        for (String rejected : new String[]{"12345678901234567890", "PASSWORDPASSWORD"}) {
+            var response = confirm(token, rejected).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDACION"))
+                    .andExpect(jsonPath("$.fields[0].field").value("contrasena")).andReturn();
+            assertThat(response.getResponse().getContentAsString()).doesNotContain(rejected, token);
+        }
+        assertThat(count("SELECT version_credencial FROM comun.usuarios WHERE id = ?", user.id())).isZero();
+        login(user.email(), user.password()).andExpect(status().isOk());
+        confirm(token, NEW_PASSWORD).andExpect(status().isNoContent());
+        login(user.email(), NEW_PASSWORD).andExpect(status().isOk());
+    }
+
+    @Test
     void publicRequestDoesNotDiscloseAccountAndUsesVerifiedRecipient() throws Exception {
         var user = account("HABILITADA");
         var disabled = account("DESHABILITADA");

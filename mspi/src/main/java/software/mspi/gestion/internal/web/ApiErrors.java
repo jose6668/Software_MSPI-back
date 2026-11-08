@@ -212,8 +212,8 @@ final class ApiErrors {
             return switch (recovery.reason()) {
                 case UNAVAILABLE -> new Problem(HttpStatus.CONFLICT, "RECUPERACION_NO_DISPONIBLE",
                         "El comprobante de recuperación no está disponible.");
-                case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
-                        "La contraseña no alcanza la longitud mínima configurada.")));
+                case PASSWORD_POLICY -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
+                        "Elija otra contraseña que cumpla la longitud mínima y no sea común o comprometida.")));
             };
         }
         if (failure instanceof InvitationFailure invitation) {
@@ -222,8 +222,8 @@ final class ApiErrors {
                         "La invitación no está disponible para esta operación.");
                 case DELIVERY -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ENVIO_NO_DISPONIBLE",
                         "No se pudo enviar la invitación. Intente de nuevo más tarde.");
-                case PASSWORD_LENGTH -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
-                        "La contraseña no alcanza la longitud mínima configurada.")));
+                case PASSWORD_POLICY -> validation(List.of(new Field("contrasena", "VALOR_INVALIDO",
+                        "Elija otra contraseña que cumpla la longitud mínima y no sea común o comprometida.")));
             };
         }
         if (failure instanceof CompanyAdministrationFailure administration) {

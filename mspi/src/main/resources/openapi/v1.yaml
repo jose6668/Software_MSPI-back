@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.11.0'
+  version: '1.12.0'
   description: Contrato HTTP inicial. La versión del contrato se puede consultar sin sesión.
 paths:
   /api/v1:
@@ -2643,7 +2643,7 @@ components:
       required: [token, contrasena]
       properties:
         token: {type: string, pattern: '^[A-Za-z0-9_-]{43}$', writeOnly: true}
-        contrasena: {type: string, minLength: 1, maxLength: 1024, format: password, writeOnly: true}
+        contrasena: {type: string, minLength: 15, maxLength: 1024, format: password, writeOnly: true, description: Debe cumplir la politica local y no estar en la lista de contrasenas expuestas.}
     CompanyConfiguration:
       type: object
       additionalProperties: false
@@ -2845,9 +2845,9 @@ components:
           type: string
           format: password
           writeOnly: true
-          minLength: 1
+          minLength: 15
           maxLength: 1024
-          description: La longitud mínima se configura en el entorno.
+          description: Mínimo de 15 caracteres Unicode; el entorno puede exigir más. Se rechazan valores presentes en la lista local de contraseñas expuestas.
     AcceptedInvitation:
       type: object
       additionalProperties: false

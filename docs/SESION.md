@@ -57,3 +57,5 @@ Aplicar Flyway común **V13 antes de desplegar este cambio**. Un trigger increme
 El cambio afecta a todas las sesiones de esa cuenta y conserva las de otros usuarios. La revocación de una membresía empresarial mantiene su comprobación de permisos por empresa y su respuesta 403. No se añade un endpoint de administración ni de eliminación de cuentas, ni cambia el esquema empresarial V7. La eliminación física se prueba con una cuenta ficticia sin referencias; las reglas de integridad de datos existentes siguen aplicándose.
 
 El rechazo se verifica al comenzar cada solicitud; no cancela operaciones que ya estaban en ejecución. El operador privilegiado de PostgreSQL y el administrador del equipo continúan siendo límites de confianza. [Implementación y pruebas](hu/HU-SEG-003.md).
+
+HU-SEG-004 aplica una [política común de contraseñas](POLITICA-CONTRASENAS.md) al crear o restablecer credenciales, incluida la herramienta técnica. La política no se aplica retroactivamente al login.
