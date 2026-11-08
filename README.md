@@ -1,4 +1,5 @@
 # Software_MSPI-back
+Revocación de sesiones por estado de cuenta: [HU-SEG-003](docs/hu/HU-SEG-003.md) y [operación](docs/SESION.md).
 
 Prevención de secretos, configuración privada y comprobación automática de PR: [guía](docs/SECRETOS-Y-CONFIGURACION.md) y [HU-SEG-002](docs/hu/HU-SEG-002.md).
 

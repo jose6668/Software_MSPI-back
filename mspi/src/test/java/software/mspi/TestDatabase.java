@@ -18,11 +18,20 @@ final class TestDatabase {
     private final String commonRuntimePassword = UUID.randomUUID().toString();
 
     TestDatabase(PostgreSQLContainer postgres) throws Exception {
+        this(postgres, null);
+    }
+
+    TestDatabase(PostgreSQLContainer postgres, String targetVersion) throws Exception {
         this.postgres = postgres;
         provision("common");
         setPassword(MigrationScope.common().migrationRole(), commonMigrationPassword);
         setPassword(MigrationScope.common().runtimeRole(), commonRuntimePassword);
-        commonFlyway().migrate();
+        if (targetVersion == null) {
+            commonFlyway().migrate();
+        } else {
+            org.flywaydb.core.Flyway.configure().configuration(commonFlyway().getConfiguration())
+                    .target(targetVersion).load().migrate();
+        }
     }
 
     org.flywaydb.core.Flyway commonFlyway() {

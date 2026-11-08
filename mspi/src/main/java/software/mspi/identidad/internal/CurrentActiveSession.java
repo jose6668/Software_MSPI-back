@@ -27,11 +27,16 @@ final class CurrentActiveSession implements ActiveSession {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof SessionIdentity identity)
-                || !clock.instant().isBefore(identity.expiraEn())) {
+                || !isCurrent(identity)) {
             throw denied();
         }
+        return identity.usuarioId();
+    }
 
-        boolean enabled = jdbc.sql("""
+    @Override
+    public boolean isCurrent(SessionIdentity identity) {
+        return clock.instant().isBefore(identity.expiraEn())
+                && jdbc.sql("""
                 SELECT EXISTS (
                     SELECT 1 FROM comun.usuarios
                     WHERE id = :id AND estado_cuenta = 'HABILITADA' AND version_credencial = :version
@@ -41,18 +46,6 @@ final class CurrentActiveSession implements ActiveSession {
                 .param("version", identity.credentialVersion())
                 .query(Boolean.class)
                 .single();
-        if (!enabled) {
-            throw denied();
-        }
-        return identity.usuarioId();
-    }
-
-    @Override
-    public boolean isCurrent(SessionIdentity identity) {
-        return clock.instant().isBefore(identity.expiraEn())
-                && jdbc.sql("SELECT version_credencial FROM comun.usuarios WHERE id = :id")
-                .param("id", identity.usuarioId()).query(Long.class).optional()
-                .filter(version -> version == identity.credentialVersion()).isPresent();
     }
 
     private static AccessDeniedException denied() {

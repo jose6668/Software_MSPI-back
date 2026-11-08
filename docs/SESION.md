@@ -47,3 +47,13 @@ El comando lee la contraseña en el prompt y entrega el hash al operador. Tratar
 Cada intento admitido consume cuota, con independencia de su resultado. La ventana fija empieza con el primer intento y se renueva al vencer. Las cuentas desconocidas están sujetas a los mismos límites. Detrás de un proxy, configurar en el contenedor únicamente intermediarios de confianza.
 
 La cookie es `HttpOnly`, `Secure` y `SameSite=Lax` en la configuración inicial. El contenedor solo acepta seguimiento de sesión mediante cookie. Servir la aplicación por HTTPS fuera del desarrollo local. El desarrollo aislado por HTTP puede configurar `server.servlet.session.cookie.secure=false`. Las sesiones y los límites se mantienen por instancia y se reinician con el proceso. La recuperación incrementa la versión de credencial en PostgreSQL y la API comprueba esa versión en cada solicitud autenticada. La coordinación de los límites entre réplicas queda pendiente. [Recuperación de acceso](hu/HU-012.md).
+
+## Revocación por estado de cuenta — HU-SEG-003
+
+Cada solicitud API autenticada comprueba vencimiento, existencia de la cuenta, estado `HABILITADA` y versión de credencial. Una cuenta deshabilitada, pendiente de verificación o eliminada provoca la invalidación de la sesión al recibir la siguiente solicitud. Las consultas protegidas responden 401 `NO_AUTENTICADO`; el cliente debe descartar su vista autenticada. Las comprobaciones CSRF de las modificaciones siguen vigentes y pueden responder 403.
+
+Aplicar Flyway común **V13 antes de desplegar este cambio**. Un trigger incrementa la versión al salir del estado `HABILITADA`, con independencia del operador autorizado que cambie el estado. Rehabilitar la cuenta no recupera cookies anteriores, aunque no hayan llegado solicitudes durante la desactivación. La instalación incrementa también la versión de las cuentas que ya estaban inactivas. Esto invalida igualmente sus comprobantes anteriores de recuperación, que comparten la versión; habrá que solicitar uno nuevo.
+
+El cambio afecta a todas las sesiones de esa cuenta y conserva las de otros usuarios. La revocación de una membresía empresarial mantiene su comprobación de permisos por empresa y su respuesta 403. No se añade un endpoint de administración ni de eliminación de cuentas, ni cambia el esquema empresarial V7. La eliminación física se prueba con una cuenta ficticia sin referencias; las reglas de integridad de datos existentes siguen aplicándose.
+
+El rechazo se verifica al comenzar cada solicitud; no cancela operaciones que ya estaban en ejecución. El operador privilegiado de PostgreSQL y el administrador del equipo continúan siendo límites de confianza. [Implementación y pruebas](hu/HU-SEG-003.md).

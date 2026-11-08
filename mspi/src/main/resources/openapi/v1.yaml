@@ -95,6 +95,10 @@ paths:
     get:
       operationId: consultarSesion
       summary: Consulta la identidad de la sesión vigente
+      description: >-
+        Comprueba vencimiento, existencia de la cuenta, estado HABILITADA y version de credencial.
+        Si la cuenta se desactiva, se elimina o cambia su version, rechaza la sesion con
+        401 NO_AUTENTICADO. Rehabilitar la cuenta requiere iniciar una nueva sesion.
       security:
         - sessionCookie: []
       responses:

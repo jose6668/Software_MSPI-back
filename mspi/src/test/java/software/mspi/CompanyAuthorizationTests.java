@@ -193,7 +193,8 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.empresas[0].empresaId").value(a().toString()));
 
         sql("UPDATE comun.usuarios SET estado_cuenta = 'DESHABILITADA' WHERE id = ?", account.id());
-        mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
+        mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("NO_AUTENTICADO"));
     }
 
     @Test
