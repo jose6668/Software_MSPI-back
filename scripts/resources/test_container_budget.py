@@ -125,8 +125,11 @@ def main():
             denied = compose("exec", "-T", "backend", "sh", "-c", "echo probe > /opt/mspi/write-probe", allow_failure=True)
             assert denied.returncode != 0, "La raiz debe estar protegida contra escritura"
             overflow = compose("exec", "-T", "backend", "sh", "-c",
-                               "dd if=/dev/zero of=/tmp/mspi-budget-probe bs=1048576 count=140", allow_failure=True)
+                               "LC_ALL=C dd if=/dev/zero of=/tmp/mspi-budget-probe bs=1048576 count=140", allow_failure=True)
             assert overflow.returncode != 0, "El temporal debe impedir superar 128 MiB"
+            assert "No space left on device" in overflow.stderr, "El rechazo debe deberse al espacio acotado"
+            written = int(compose("exec", "-T", "backend", "stat", "-c", "%s", "/tmp/mspi-budget-probe").stdout.strip())
+            assert 120 * 1048576 < written <= 128 * 1048576, "Debe comprobarse el agotamiento real del tmpfs"
             # Only this named test file is removed inside the disposable container.
             compose("exec", "-T", "backend", "rm", "-f", "/tmp/mspi-budget-probe")
             wait_until(healthy, seconds=20)
