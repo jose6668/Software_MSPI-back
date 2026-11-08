@@ -16,6 +16,7 @@ import org.springframework.orm.jpa.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import software.mspi.empresas.api.*;
 import software.mspi.empresas.internal.persistence.JpaFactories;
+import software.mspi.empresas.internal.persistence.SqlBudget;
 import software.mspi.empresas.internal.persistence.common.CompanyRegistryRepository;
 import software.mspi.empresas.internal.persistence.tenant.CompanyContextRepository;
 
@@ -30,8 +31,8 @@ public class TenantJpaConfiguration {
     TenantSecretSource tenantSecrets(Environment environment) { return new EnvironmentTenantSecretSource(environment); }
 
     @Bean(destroyMethod = "close")
-    TenantConnectionPools tenantPools(TenancyProperties limits, TenantSecretSource secrets, ObjectProvider<Clock> clock) {
-        return new TenantConnectionPools(limits, secrets, clock.getIfAvailable(Clock::systemUTC));
+    TenantConnectionPools tenantPools(TenancyProperties limits, TenantSecretSource secrets, ObjectProvider<Clock> clock, SqlBudget budget) {
+        return new TenantConnectionPools(limits, secrets, clock.getIfAvailable(Clock::systemUTC), budget);
     }
     @Bean TenantContext tenantContext() { return new TenantContext(); }
     @Bean TenantConnectionProvider tenantConnections(DataSource common, TenantContext context) {

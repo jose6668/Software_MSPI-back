@@ -1,0 +1,73 @@
+services:
+  database:
+    image: postgres@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+    environment:
+      POSTGRES_DB: mspi
+      POSTGRES_USER: mspi_operator
+      POSTGRES_PASSWORD_FILE: /run/secrets/db-admin-password
+    secrets:
+      - db-admin-password
+    command: [postgres, -c, max_connections=32, -c, shared_buffers=128MB, -c, work_mem=4MB,
+              -c, maintenance_work_mem=32MB, -c, temp_file_limit=64MB, -c, max_parallel_workers_per_gather=0]
+    cpus: 1.0
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 96
+    shm_size: 64m
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/run/postgresql:rw,noexec,nosuid,size=16m
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U mspi_operator -d mspi]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  backend:
+    image: mspi-runtime:hu-seg-007
+    build:
+      context: ../..
+      dockerfile: deploy/resources/Dockerfile
+    depends_on:
+      database: {condition: service_healthy}
+    user: '10001:10001'
+    environment:
+      SPRING_PROFILES_ACTIVE: https-container
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/mspi
+      SPRING_DATASOURCE_USERNAME: mspi_common_runtime
+      MSPI_TLS_KEYSTORE: file:///run/tls/server.p12
+    secrets:
+      - source: db-runtime-password
+        target: spring.datasource.password
+      - source: tls-password
+        target: MSPI_TLS_KEYSTORE_PASSWORD
+    volumes:
+      - type: bind
+        source: ${MSPI_TLS_KEYSTORE_FILE:?Set an external TLS keystore file}
+        target: /run/tls/server.p12
+        read_only: true
+    ports:
+      - '127.0.0.1:${MSPI_HTTPS_PORT:-8443}:8443'
+    cpus: 2.0
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 128
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m,uid=10001,gid=10001,mode=0700
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+secrets:
+  db-admin-password:
+    file: ${MSPI_DB_ADMIN_PASSWORD_FILE:?Set an external operator secret file}
+  db-runtime-password:
+    file: ${MSPI_DB_RUNTIME_PASSWORD_FILE:?Set an external runtime secret file}
+  tls-password:
+    file: ${MSPI_TLS_PASSWORD_FILE:?Set an external TLS secret file}
+volumes:
+  database-data:

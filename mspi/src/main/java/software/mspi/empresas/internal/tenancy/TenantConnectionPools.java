@@ -8,17 +8,20 @@ import java.util.*;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import software.mspi.empresas.internal.migration.MigrationScope;
+import software.mspi.empresas.internal.persistence.SqlBudget;
+import software.mspi.empresas.api.DatabaseCapacityExceeded;
 
 /** Bounded pools keyed by technical identity/company; active units cannot be evicted. */
 public final class TenantConnectionPools implements AutoCloseable {
     private final TenancyProperties limits;
     private final TenantSecretSource secrets;
     private final Clock clock;
+    private final SqlBudget budget;
     private final Map<UUID, Entry> entries = new LinkedHashMap<>();
     private boolean closed;
 
-    public TenantConnectionPools(TenancyProperties limits, TenantSecretSource secrets, Clock clock) {
-        this.limits = limits; this.secrets = secrets; this.clock = clock;
+    public TenantConnectionPools(TenancyProperties limits, TenantSecretSource secrets, Clock clock, SqlBudget budget) {
+        this.limits = limits; this.secrets = secrets; this.clock = clock; this.budget = budget;
     }
 
     synchronized Lease reserve(UUID company) {
@@ -41,7 +44,7 @@ public final class TenantConnectionPools implements AutoCloseable {
             if (entries.size() >= limits.maxPools()) {
                 var idle = entries.values().stream().filter(e -> e.active == 0)
                         .min(Comparator.comparing(e -> e.lastUsed))
-                        .orElseThrow(() -> new IllegalStateException("Capacidad empresarial ocupada; reintente después."));
+                        .orElseThrow(() -> new DatabaseCapacityExceeded());
                 entries.remove(idle.company); idle.source.close();
             }
             var config = new HikariConfig();
@@ -52,6 +55,7 @@ public final class TenantConnectionPools implements AutoCloseable {
             config.setMaximumPoolSize(limits.connectionsPerPool());
             config.setMinimumIdle(0);
             config.setConnectionTimeout(limits.connectionTimeout().toMillis());
+            budget.configureNetwork(config);
             config.setPoolName("mspi-tenant-" + company);
             entry = new Entry(company, scope, new HikariDataSource(config), now);
             entries.put(company, entry);
@@ -113,6 +117,7 @@ public final class TenantConnectionPools implements AutoCloseable {
                 statement.execute("RESET ROLE");
                 statement.execute("RESET ALL");
             }
+            budget.apply(connection);
             connection.setSchema(entry.scope.schema());
             connection.clearWarnings();
         }

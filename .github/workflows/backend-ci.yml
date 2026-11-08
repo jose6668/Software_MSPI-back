@@ -73,6 +73,10 @@ jobs:
       - name: Compile, test with PostgreSQL and package
         run: bash ./mvnw --batch-mode --no-transfer-progress clean verify
 
+      - name: Verify isolated CPU memory and temporary-disk limits
+        working-directory: .
+        run: python3 scripts/resources/test_container_budget.py
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

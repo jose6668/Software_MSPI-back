@@ -67,6 +67,14 @@ management:
     mail:
       enabled: false
 mspi:
+  sql-budget:
+    statement-timeout: 5s
+    lock-timeout: 1s
+    idle-transaction-timeout: 5s
+    transaction-timeout: 15s
+    work-mem-kib: 4096
+    common-connections: 8
+    common-wait: 2s
   load:
     window: 1m
     requests-per-address: 1200

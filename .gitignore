@@ -33,3 +33,11 @@ __pycache__/
 # Claves locales para los almacenes TLS
 server-password.txt
 ca-password.txt
+
+# Secretos externos del perfil de recursos
+db-admin-password
+db-runtime-password
+db-migrator-password
+db-admin-password.txt
+db-runtime-password.txt
+db-migrator-password.txt
