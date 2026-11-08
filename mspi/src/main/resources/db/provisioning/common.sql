@@ -13,4 +13,12 @@ CREATE SCHEMA comun AUTHORIZATION mspi_common_migrator;
 REVOKE ALL ON SCHEMA comun FROM PUBLIC;
 GRANT USAGE ON SCHEMA comun TO mspi_common_runtime;
 SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET search_path = comun', current_database()) \gexec
+ALTER ROLE mspi_common_runtime CONNECTION LIMIT 12;
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET statement_timeout = ''5s''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET lock_timeout = ''1s''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET idle_in_transaction_session_timeout = ''5s''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET transaction_timeout = ''15s''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET work_mem = ''4MB''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET temp_file_limit = ''64MB''', current_database()) \gexec
+SELECT format('ALTER ROLE mspi_common_runtime IN DATABASE %I SET max_parallel_workers_per_gather = ''0''', current_database()) \gexec
 COMMIT;

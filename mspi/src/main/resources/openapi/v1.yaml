@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.13.0'
+  version: '1.14.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
     por concurrencia, sesiones o tabla de clientes agotadas, y 413 CARGA_DEMASIADO_GRANDE.
     Los rechazos de carga usan Problem, no-store y correlationId; 429/503 de este control
-    incluyen Retry-After en segundos. Las respuestas HEAD no contienen cuerpo.
+    incluyen Retry-After en segundos. Un presupuesto SQL o pool agotado responde 503 BASE_OCUPADA
+    con Retry-After, sin SQL ni credenciales. Las respuestas HEAD no contienen cuerpo.
     Los limites por defecto y su alcance se describen en docs/LIMITES-SOBRECARGA.md.
 paths:
   /api/v1:

@@ -26,7 +26,7 @@ class HttpsDeploymentConfiguration {
     static void validate(Environment environment) {
         var profiles = Arrays.stream(environment.getActiveProfiles()).filter(value -> value.startsWith("https-")).toList();
         if (profiles.isEmpty()) return;
-        if (profiles.size() != 1 || !Set.of("https-local", "https-lan", "https-internet").contains(profiles.get(0))) {
+        if (profiles.size() != 1 || !Set.of("https-local", "https-lan", "https-internet", "https-container").contains(profiles.get(0))) {
             throw invalid("Seleccione un unico perfil HTTPS conocido.");
         }
         if (!environment.getProperty("server.ssl.enabled", Boolean.class, false)
@@ -45,7 +45,11 @@ class HttpsDeploymentConfiguration {
         }
         String address = environment.getProperty("server.address", "");
         boolean lan = "https-lan".equals(profiles.get(0));
-        if (lan ? !privateIpv4(address) : !"127.0.0.1".equals(address)) {
+        boolean container = "https-container".equals(profiles.get(0));
+        if (container) {
+            if (!"0.0.0.0".equals(address)) throw invalid("El contenedor exige su escucha interna prevista.");
+            ContainerResourceBudget.verify();
+        } else if (lan ? !privateIpv4(address) : !"127.0.0.1".equals(address)) {
             throw invalid("Local e Internet exigen loopback; LAN exige una IPv4 privada explicita.");
         }
         String managementPort = environment.getProperty("management.server.port");

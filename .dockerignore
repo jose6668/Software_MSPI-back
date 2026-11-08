@@ -1,0 +1,7 @@
+**
+!deploy/
+!deploy/resources/
+!deploy/resources/Dockerfile
+!mspi/
+!mspi/target/
+!mspi/target/mspi-0.0.1-SNAPSHOT.jar

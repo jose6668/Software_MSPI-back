@@ -34,6 +34,14 @@ BEGIN
     ELSIF role_count <> 2 OR schema_owner IS DISTINCT FROM migrator THEN
         RAISE EXCEPTION 'Recursos de aprovisionamiento incompletos o en conflicto.';
     END IF;
+    EXECUTE format('ALTER ROLE %I CONNECTION LIMIT 4', runtime);
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET statement_timeout = ''5s''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET lock_timeout = ''1s''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET idle_in_transaction_session_timeout = ''5s''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET transaction_timeout = ''15s''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET work_mem = ''4MB''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET temp_file_limit = ''64MB''', runtime, current_database());
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I SET max_parallel_workers_per_gather = ''0''', runtime, current_database());
     EXECUTE format('GRANT REFERENCES (empresa_id, id) ON TABLE comun.membresias TO %I', migrator);
     EXECUTE format('GRANT REFERENCES (id) ON TABLE comun.versiones_catalogo TO %I', migrator);
     EXECUTE format('GRANT REFERENCES (id) ON TABLE comun.versiones_metodologia TO %I', migrator);

@@ -1,6 +1,9 @@
 package software.mspi.gestion.internal.web;
 
 import java.io.IOException;
+import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
+import software.mspi.empresas.api.DatabaseCapacityExceeded;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -60,7 +63,7 @@ final class ApiErrors {
         }
 
         Problem problem = describe(failure);
-        if (problem.status().is5xxServerError() && !"CAPACIDAD_AGOTADA".equals(problem.code())) {
+        if (problem.status().is5xxServerError() && !List.of("CAPACIDAD_AGOTADA", "BASE_OCUPADA").contains(problem.code())) {
             LOG.error("Fallo de API {} correlationId={} exceptionType={}", problem.code(),
                     ApiCorrelationFilter.id(request), failure.getClass().getName());
         }
@@ -85,7 +88,7 @@ final class ApiErrors {
         if (id == null) {
             id = UUID.randomUUID();
         }
-        if (("CAPACIDAD_AGOTADA".equals(problem.code()) || "DEMASIADAS_SOLICITUDES".equals(problem.code()))
+        if (("CAPACIDAD_AGOTADA".equals(problem.code()) || "DEMASIADAS_SOLICITUDES".equals(problem.code()) || "BASE_OCUPADA".equals(problem.code()))
                 && !response.containsHeader("Retry-After")) response.setHeader("Retry-After", "1");
         response.resetBuffer();
         response.setStatus(problem.status().value());
@@ -101,6 +104,10 @@ final class ApiErrors {
     private static Problem describe(Exception failure) {
         Throwable cause = failure;
         for (int depth = 0; cause != null && depth < 12; depth++, cause = cause.getCause()) {
+            if (cause instanceof DatabaseCapacityExceeded || cause instanceof SQLTransientConnectionException
+                    || cause instanceof SQLException sql && sql.getSQLState() != null && List.of("57014", "55P03", "53300", "53400", "25P03", "25P04").contains(sql.getSQLState())) {
+                return new Problem(HttpStatus.SERVICE_UNAVAILABLE, "BASE_OCUPADA", "La operacion excedio el presupuesto de base de datos. Reintente mas tarde.");
+            }
             if (cause instanceof ApiLoadFilter.BodyTooLarge) return oversizedEvidence();
             if (cause instanceof ApiLoadGuard.Rejected rejected) {
                 return new Problem(rejected.status, rejected.code, "Intente de nuevo mas tarde.");

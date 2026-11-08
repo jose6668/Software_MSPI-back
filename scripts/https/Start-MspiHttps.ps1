@@ -42,7 +42,7 @@ try {
     $env:MSPI_TLS_KEYSTORE_PASSWORD = [IO.File]::ReadAllText($passwordFile).Trim()
     $env:MSPI_HTTPS_PORT = $Port.ToString()
     $env:MSPI_HTTPS_LAN_ADDRESS = $LanAddress
-    & $JavaPath -jar $JarPath ('--spring.profiles.active=https-' + $Mode)
+    & $JavaPath '-Xms128m' '-Xmx512m' '-XX:MaxMetaspaceSize=192m' '-XX:MaxDirectMemorySize=128m' '-XX:ActiveProcessorCount=2' '-Xss512k' '-XX:+ExitOnOutOfMemoryError' -jar $JarPath ('--spring.profiles.active=https-' + $Mode)
     if ($LASTEXITCODE -ne 0) { throw 'El backend no pudo iniciar en el perfil HTTPS solicitado.' }
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }

@@ -1,4 +1,5 @@
 # Software_MSPI-back
+Presupuestos SQL y ejecución aislada: [HU-SEG-007](docs/hu/HU-SEG-007.md) y [operación](docs/RECURSOS-Y-SQL.md).
 HTTPS local, LAN y origen de túnel: [HU-SEG-006](docs/hu/HU-SEG-006.md) y [puesta en marcha](docs/HTTPS-Y-EXPOSICION.md).
 Protección de entrada ante sobrecarga: [HU-SEG-005](docs/hu/HU-SEG-005.md) y [límites y operación](docs/LIMITES-SOBRECARGA.md).
 Política de contraseñas y bloqueo local de valores expuestos: [HU-SEG-004](docs/hu/HU-SEG-004.md) y [operación](docs/POLITICA-CONTRASENAS.md).
