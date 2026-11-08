@@ -15,6 +15,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -108,6 +110,71 @@ class SessionIntegrationTests {
         assertProblem(send("GET", SESSION, sessionCookie, null, null), 401, "NO_AUTENTICADO");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"DESHABILITADA", "PENDIENTE_VERIFICACION"})
+    void deactivationRevokesEverySessionAndPreservesOtherAccounts(String state) throws Exception {
+        String first = login();
+        String second = login();
+        String otherEmail = UUID.randomUUID() + "@example.test";
+        UUID other = insert(otherEmail, "HABILITADA");
+        String otherCookie = login(otherEmail, password);
+        assertThat(first).isNotEqualTo(second);
+        changeState(state);
+        assertRejectedSession(first);
+        assertProblem(send("GET", "/api/v1/mis-empresas", second, null, null), 401, "NO_AUTENTICADO");
+        assertRejectedSession(second);
+        var otherResponse = send("GET", SESSION, otherCookie, null, null);
+        assertThat(otherResponse.statusCode()).isEqualTo(200);
+        assertThat(json(otherResponse).path("usuarioId").asString()).isEqualTo(other.toString());
+        changeState("HABILITADA");
+        assertRejectedSession(first);
+        assertRejectedSession(second);
+        assertThat(send("GET", SESSION, login(), null, null).statusCode()).isEqualTo(200);
+        assertThat(send("GET", "/api/v1/mis-empresas", otherCookie, null, null).statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void reactivationWithoutInterveningRequestsDoesNotReviveOldCookie() throws Exception {
+        String oldCookie = login();
+        changeState("DESHABILITADA");
+        changeState("HABILITADA");
+        assertRejectedSession(oldCookie);
+        assertThat(send("GET", SESSION, login(), null, null).statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void deletedAccountCannotKeepUsingItsSession() throws Exception {
+        String sessionCookie = login();
+        String otherEmail = UUID.randomUUID() + "@example.test";
+        UUID other = insert(otherEmail, "HABILITADA");
+        String otherCookie = login(otherEmail, password);
+        try (var connection = database.admin();
+                var statement = connection.prepareStatement("DELETE FROM comun.usuarios WHERE id = ?")) {
+            statement.setObject(1, user);
+            assertThat(statement.executeUpdate()).isEqualTo(1);
+        }
+        assertRejectedSession(sessionCookie);
+        var response = send("GET", SESSION, otherCookie, null, null);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(json(response).path("usuarioId").asString()).isEqualTo(other.toString());
+    }
+
+    private void assertRejectedSession(String cookie) throws Exception {
+        var response = send("GET", SESSION, cookie, null, null);
+        assertProblem(response, 401, "NO_AUTENTICADO");
+        assertThat(response.body()).doesNotContain(password, hash, email, user.toString());
+        assertProblem(send("GET", "/api/v1/mis-empresas", cookie, null, null), 401, "NO_AUTENTICADO");
+    }
+
+    private void changeState(String state) throws SQLException {
+        try (var connection = database.admin(); var statement = connection.prepareStatement(
+                "UPDATE comun.usuarios SET estado_cuenta = ? WHERE id = ?")) {
+            statement.setString(1, state);
+            statement.setObject(2, user);
+            assertThat(statement.executeUpdate()).isEqualTo(1);
+        }
+    }
+
     @Test
     void wrongUnknownAndDisabledCredentialsHaveTheSamePublicRejection() throws Exception {
         String disabled = UUID.randomUUID() + "@example.test";
@@ -194,8 +261,12 @@ class SessionIntegrationTests {
     }
 
     private String login() throws Exception {
+        return login(email, password);
+    }
+
+    private String login(String address, String secret) throws Exception {
         var token = csrf(null);
-        var response = send("POST", SESSION, token.cookie(), token, credentials(email, password));
+        var response = send("POST", SESSION, token.cookie(), token, credentials(address, secret));
         assertThat(response.statusCode()).isEqualTo(200);
         return cookie(response);
     }
