@@ -11,6 +11,12 @@ $destination = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnr
 $scan = $destination
 while ($scan) {
     if (Test-Path -LiteralPath (Join-Path $scan '.git')) { throw 'El material TLS debe quedar fuera de cualquier repositorio Git.' }
+    if (Test-Path -LiteralPath $scan) {
+        $entry = Get-Item -LiteralPath $scan -Force
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'No se permiten enlaces o junctions en la ruta del material TLS.'
+        }
+    }
     $scan = [IO.Path]::GetDirectoryName($scan)
 }
 if (Test-Path -LiteralPath $destination) { throw 'El directorio de destino ya existe; no se sobrescriben certificados.' }

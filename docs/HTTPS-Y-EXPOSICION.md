@@ -23,7 +23,7 @@ $tlsDirectory = Join-Path $env:LOCALAPPDATA 'MSPI/https/evaluacion-01'
 ./scripts/https/New-MspiTlsMaterial.ps1 -OutputDirectory $tlsDirectory -LanAddress '192.168.50.10'
 ```
 
-La IP es un ejemplo: indicar la IPv4 privada real que usará el equipo. El generador rechaza IP públicas y directorios dentro de cualquier repositorio Git, y no sobrescribe un destino existente. Crea una CA privada local de un año y un certificado de servidor de 90 días, RSA 3072 y SHA-256, con SAN localhost/127.0.0.1 y la IP LAN si se proporciona. Puede omitirse LanAddress para uso exclusivamente local.
+La IP es un ejemplo: indicar la IPv4 privada real que usará el equipo. El generador rechaza IP públicas y directorios dentro de cualquier repositorio Git, y no sobrescribe un destino existente. También rechaza enlaces simbólicos y junctions en la ruta de destino. Crea una CA privada local de un año y un certificado de servidor de 90 días, RSA 3072 y SHA-256, con SAN localhost/127.0.0.1 y la IP LAN si se proporciona. Puede omitirse LanAddress para uso exclusivamente local.
 
 El directorio de Windows tiene herencia desactivada y acceso solo para el usuario que lo genera; en Linux usa permisos 700. Dentro quedan server.p12, server-password.txt, ca.p12, ca-password.txt y los certificados públicos ca.crt/server.crt. Los passwords son aleatorios, distintos y se pasan a keytool por variables de entorno temporales, nunca como valores en argumentos. No se imprimen. Las exclusiones y el control de secretos también prohíben versionar los dos archivos de contraseña, incluso forzando su incorporación a Git.
 
@@ -74,7 +74,7 @@ Un Quick Tunnel de Cloudflare entrega un hostname temporal sin necesitar dominio
 ./scripts/https/Start-MspiQuickTunnel.ps1 -TlsDirectory $tlsDirectory
 ```
 
-El helper exige un origen HTTPS funcionando con certificado válido antes de publicar. El túnel conecta a https://127.0.0.1:8443, fija origin-server-name=localhost y origin-ca-pool al ca.crt privado de esta instalación, y mantiene no-tls-verify=false. Los tiempos de conexión y negociación TLS al origen son de 5 segundos. No se incluye un origen HTTP alternativo. Verificar el nombre y certificado públicos desde un equipo externo antes de compartirlo.
+El helper exige un origen HTTPS funcionando con certificado válido antes de publicar. El túnel conecta a https://127.0.0.1:8443, fija origin-server-name=localhost y origin-ca-pool al ca.crt privado de esta instalación, y mantiene no-tls-verify=false. Los tiempos de conexión y negociación TLS al origen son de 5 segundos. No se incluye un origen HTTP alternativo. Verificar el nombre y certificado públicos desde un equipo externo antes de compartirlo. El visitante del enlace público no necesita instalar la CA local: su navegador valida el certificado público del proveedor; ca.crt se utiliza en el conector hacia el origen.
 
 Cloudflare termina el TLS público y crea otra conexión TLS hacia el origen; es un intermediario que puede procesar el tráfico. El cifrado de ambos tramos no elimina esa confianza. La URL temporal no sustituye autenticación ni permisos del backend. No se ha publicado un enlace real como parte de la implementación ni se acredita una prueba de tráfico por Internet.
 
