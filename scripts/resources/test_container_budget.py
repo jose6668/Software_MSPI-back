@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import ssl
 import subprocess
 import tempfile
@@ -60,6 +61,8 @@ def wait_until(check, seconds=90):
 
 
 def main():
+    if os.name != "posix":
+        raise RuntimeError("Este arnes desechable requiere el runner Linux de CI.")
     tls = Path(os.environ["MSPI_TEST_TLS_DIRECTORY"]).resolve()
     REDACT.append((tls / "server-password.txt").read_text().strip())
     with tempfile.TemporaryDirectory(prefix="mspi-resource-secrets-") as temporary:
@@ -70,8 +73,15 @@ def main():
         REDACT.extend([operator, runtime, migrator])
         (private / "db-admin-password").write_text(operator)
         (private / "db-runtime-password").write_text(runtime)
-        ENV.update({"MSPI_TLS_KEYSTORE_FILE": str(tls / "server.p12"),
-                    "MSPI_TLS_PASSWORD_FILE": str(tls / "server-password.txt"),
+        # Mount only dedicated runtime copies, owned by the non-root service identity.
+        shutil.copyfile(tls / "server.p12", private / "server.p12")
+        shutil.copyfile(tls / "server-password.txt", private / "server-password.txt")
+        service_files = [private / name for name in ("server.p12", "server-password.txt", "db-admin-password", "db-runtime-password")]
+        for file in service_files:
+            file.chmod(0o600)
+        run(["sudo", "-n", "chown", "10001:10001"] + [str(file) for file in service_files])
+        ENV.update({"MSPI_TLS_KEYSTORE_FILE": str(private / "server.p12"),
+                    "MSPI_TLS_PASSWORD_FILE": str(private / "server-password.txt"),
                     "MSPI_DB_ADMIN_PASSWORD_FILE": str(private / "db-admin-password"),
                     "MSPI_DB_RUNTIME_PASSWORD_FILE": str(private / "db-runtime-password"), "MSPI_HTTPS_PORT": "0"})
         try:
