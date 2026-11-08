@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PasswordPolicyTests {
     @ParameterizedTest
     @ValueSource(strings = {"123456789012345", "12345678901234567890", "passwordpassword",
-            "PASSWORDPASSWORD", "111111111111111", "demasiado corta", "               "})
+            "PASSWORDPASSWORD", "111111111111111", "muy corta", "               "})
     void rejectsShortBlankAndKnownExposedValues(String candidate) {
         assertThat(PasswordPolicy.accepts(candidate, 15)).isFalse();
         assertThat(PasswordPolicy.accepts(CharBuffer.wrap(candidate), 15)).isFalse();
