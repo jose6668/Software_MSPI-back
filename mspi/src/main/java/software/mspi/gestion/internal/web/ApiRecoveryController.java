@@ -47,7 +47,7 @@ class ApiRecoveryController {
     }
 
     record Confirmation(@NotNull @Pattern(regexp = "[A-Za-z0-9_-]{43}") String token,
-                        @NotEmpty @Size(max = 1024) String contrasena) {
+                        @NotEmpty @Size(min = 15, max = 1024) String contrasena) {
         @Override public String toString() { return "Confirmation[redacted]"; }
     }
 }

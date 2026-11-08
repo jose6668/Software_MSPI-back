@@ -5,6 +5,7 @@ import java.util.concurrent.Semaphore;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import software.mspi.identidad.api.InvitedAccountPassword;
+import software.mspi.identidad.api.PasswordPolicy;
 import software.mspi.identidad.api.LoginLimitException;
 
 @Service
@@ -20,6 +21,9 @@ final class LocalInvitedAccountPassword implements InvitedAccountPassword {
 
     @Override
     public String encode(String rawPassword) {
+        if (!PasswordPolicy.accepts(rawPassword, PasswordPolicy.MIN_LENGTH)) {
+            throw new IllegalArgumentException("La contrasena no cumple la politica.");
+        }
         if (!checks.tryAcquire()) {
             throw new LoginLimitException();
         }

@@ -20,6 +20,7 @@ import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.internal.migration.SchemaMigrator;
 import software.mspi.identidad.api.ActiveSession;
 import software.mspi.identidad.api.EmailKey;
+import software.mspi.identidad.api.PasswordPolicy;
 import software.mspi.identidad.api.InvitedAccountPassword;
 
 @Service
@@ -90,8 +91,8 @@ class JdbcCompanyInvitations implements CompanyInvitations {
         if (!eligible) {
             throw unavailable();
         }
-        if (password.length() < settings.minPasswordLength()) {
-            throw new InvitationFailure(InvitationFailure.Reason.PASSWORD_LENGTH);
+        if (!PasswordPolicy.accepts(password, settings.minPasswordLength())) {
+            throw new InvitationFailure(InvitationFailure.Reason.PASSWORD_POLICY);
         }
         return consume(null, UUID.randomUUID(), displayName, passwords.encode(password), digest);
     }

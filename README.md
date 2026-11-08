@@ -1,4 +1,5 @@
 # Software_MSPI-back
+Política de contraseñas y bloqueo local de valores expuestos: [HU-SEG-004](docs/hu/HU-SEG-004.md) y [operación](docs/POLITICA-CONTRASENAS.md).
 Revocación de sesiones por estado de cuenta: [HU-SEG-003](docs/hu/HU-SEG-003.md) y [operación](docs/SESION.md).
 
 Prevención de secretos, configuración privada y comprobación automática de PR: [guía](docs/SECRETOS-Y-CONFIGURACION.md) y [HU-SEG-002](docs/hu/HU-SEG-002.md).

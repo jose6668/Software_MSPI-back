@@ -4,6 +4,8 @@ import java.nio.CharBuffer;
 import java.util.Arrays;
 import java.util.Map;
 
+import software.mspi.identidad.api.PasswordPolicy;
+
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
@@ -33,8 +35,8 @@ public final class LocalPasswordHash {
             return;
         }
         try {
-            if (password.length == 0 || password.length > 1024) {
-                System.err.println("Entrada de contraseña inválida.");
+            if (!PasswordPolicy.accepts(CharBuffer.wrap(password), PasswordPolicy.MIN_LENGTH)) {
+                System.err.println("Use al menos 15 caracteres y evite contraseñas comunes o comprometidas.");
                 System.exit(2);
             } else {
                 System.console().writer().println(encoder().encode(CharBuffer.wrap(password)));

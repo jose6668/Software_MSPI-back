@@ -2,7 +2,7 @@ package software.mspi.identidad.api;
 
 public final class RecoveryFailure extends RuntimeException {
 
-    public enum Reason { UNAVAILABLE, PASSWORD_LENGTH }
+    public enum Reason { UNAVAILABLE, PASSWORD_POLICY }
 
     private final Reason reason;
 

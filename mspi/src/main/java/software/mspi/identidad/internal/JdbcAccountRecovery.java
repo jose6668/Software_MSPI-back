@@ -29,6 +29,7 @@ import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 import software.mspi.identidad.api.AccountRecovery;
 import software.mspi.identidad.api.EmailKey;
+import software.mspi.identidad.api.PasswordPolicy;
 import software.mspi.identidad.api.LoginLimitException;
 import software.mspi.identidad.api.RecoveryFailure;
 
@@ -89,8 +90,8 @@ final class JdbcAccountRecovery implements AccountRecovery {
             if (!eligible) {
                 throw unavailable();
             }
-            if (password.length() < settings.minPasswordLength()) {
-                throw new RecoveryFailure(RecoveryFailure.Reason.PASSWORD_LENGTH);
+            if (!PasswordPolicy.accepts(password, settings.minPasswordLength())) {
+                throw new RecoveryFailure(RecoveryFailure.Reason.PASSWORD_POLICY);
             }
             boolean confirmed = jdbc.sql("SELECT comun.confirmar_recuperacion(:fingerprint, :hash)")
                     .param("fingerprint", fingerprint).param("hash", passwords.encode(password))
