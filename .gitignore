@@ -1,0 +1,31 @@
+# Configuración y secretos de cualquier subcarpeta
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+.pgpass
+.npmrc
+.pypirc
+credentials.json
+credentials.pem
+application-local.yml
+application-local.yaml
+application-secrets.yml
+application-secrets.yaml
+secrets/
+.secrets/
+*.dump
+*.backup
+
+# Salidas locales
+__pycache__/
+.security-reports/
+.idea/
+.vscode/
