@@ -11,7 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.header.HeaderWriterFilter;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import software.mspi.identidad.api.ActiveSession;
@@ -19,6 +20,7 @@ import software.mspi.identidad.api.ActiveSession;
 import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(ApiLoadSettings.class)
 class ApiSecurityConfiguration {
 
     @Bean
@@ -37,7 +39,8 @@ class ApiSecurityConfiguration {
     @Order(1)
     SecurityFilterChain apiSecurity(HttpSecurity http, ApiErrors errors,
                                     HttpSessionSecurityContextRepository contexts,
-                                    HttpSessionCsrfTokenRepository csrf, ActiveSession sessions) throws Exception {
+                                    HttpSessionCsrfTokenRepository csrf, ActiveSession sessions,
+                                    ApiLoadGuard load, ApiLoadSettings loadSettings) throws Exception {
         return http
                 .securityMatcher("/api/v1", "/api/v1/**")
                 .authorizeHttpRequests(auth -> auth
@@ -99,8 +102,8 @@ class ApiSecurityConfiguration {
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
                 .securityContext(config -> config.securityContextRepository(contexts))
-                .addFilterAfter(new SessionExpiryFilter(sessions, errors),
-                        SecurityContextHolderFilter.class)
+                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors), HeaderWriterFilter.class)
+                .addFilterAfter(new SessionExpiryFilter(sessions, errors), ApiLoadFilter.class)
                 .csrf(config -> config.csrfTokenRepository(csrf))
                 .logout(config -> config.disable())
                 .exceptionHandling(exceptions -> exceptions
@@ -118,7 +121,8 @@ class ApiSecurityConfiguration {
 
     @Bean
     @Order(2)
-    SecurityFilterChain remainingSecurity(HttpSecurity http) throws Exception {
+    SecurityFilterChain remainingSecurity(HttpSecurity http, ApiErrors errors,
+                                          ApiLoadGuard load, ApiLoadSettings loadSettings) throws Exception {
         // Operational health remains available. Authentication is only through the API.
         return http.authorizeHttpRequests(auth -> auth
                         .requestMatchers(EndpointRequest.to(HealthEndpoint.class),
@@ -126,6 +130,7 @@ class ApiSecurityConfiguration {
                         .permitAll()
                         .anyRequest().denyAll())
                 .cors(withDefaults())
+                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors), HeaderWriterFilter.class)
                 .requestCache(cache -> cache.disable())
                 .logout(config -> config.disable())
                 .build();

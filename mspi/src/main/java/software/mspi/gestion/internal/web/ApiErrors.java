@@ -60,7 +60,7 @@ final class ApiErrors {
         }
 
         Problem problem = describe(failure);
-        if (problem.status().is5xxServerError()) {
+        if (problem.status().is5xxServerError() && !"CAPACIDAD_AGOTADA".equals(problem.code())) {
             LOG.error("Fallo de API {} correlationId={} exceptionType={}", problem.code(),
                     ApiCorrelationFilter.id(request), failure.getClass().getName());
         }
@@ -85,6 +85,8 @@ final class ApiErrors {
         if (id == null) {
             id = UUID.randomUUID();
         }
+        if (("CAPACIDAD_AGOTADA".equals(problem.code()) || "DEMASIADAS_SOLICITUDES".equals(problem.code()))
+                && !response.containsHeader("Retry-After")) response.setHeader("Retry-After", "1");
         response.resetBuffer();
         response.setStatus(problem.status().value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
@@ -97,6 +99,13 @@ final class ApiErrors {
     }
 
     private static Problem describe(Exception failure) {
+        Throwable cause = failure;
+        for (int depth = 0; cause != null && depth < 12; depth++, cause = cause.getCause()) {
+            if (cause instanceof ApiLoadFilter.BodyTooLarge) return oversizedEvidence();
+            if (cause instanceof ApiLoadGuard.Rejected rejected) {
+                return new Problem(rejected.status, rejected.code, "Intente de nuevo mas tarde.");
+            }
+        }
         if (failure instanceof MethodArgumentNotValidException invalid) {
             var binding = invalid.getBindingResult();
             var fields = binding.getFieldErrors().stream().map(error -> invalidField(error.getField())).distinct().toList();

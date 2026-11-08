@@ -1,4 +1,5 @@
 # Software_MSPI-back
+Protección de entrada ante sobrecarga: [HU-SEG-005](docs/hu/HU-SEG-005.md) y [límites y operación](docs/LIMITES-SOBRECARGA.md).
 Política de contraseñas y bloqueo local de valores expuestos: [HU-SEG-004](docs/hu/HU-SEG-004.md) y [operación](docs/POLITICA-CONTRASENAS.md).
 Revocación de sesiones por estado de cuenta: [HU-SEG-003](docs/hu/HU-SEG-003.md) y [operación](docs/SESION.md).
 
