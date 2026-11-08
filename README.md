@@ -1,5 +1,7 @@
 # Software_MSPI-back
 
+Prevención de secretos, configuración privada y comprobación automática de PR: [guía](docs/SECRETOS-Y-CONFIGURACION.md) y [HU-SEG-002](docs/hu/HU-SEG-002.md).
+
 Plan de implementación por historias de usuario, criterios de aceptación y rúbrica: [Plan HU y rúbrica](docs/PLAN-HU-Y-RUBRICA.md).
 
 Cada HU se desarrolla en una rama propia y se entrega mediante un PR hacia `Develop`, con pruebas y evidencias según su alcance.
