@@ -1,0 +1,5 @@
+spring:
+  config:
+    import: classpath:https-common.yaml
+server:
+  address: ${MSPI_HTTPS_LAN_ADDRESS}

@@ -29,3 +29,7 @@ __pycache__/
 .security-reports/
 .idea/
 .vscode/
+
+# Claves locales para los almacenes TLS
+server-password.txt
+ca-password.txt

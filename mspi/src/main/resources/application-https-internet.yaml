@@ -1,0 +1,5 @@
+spring:
+  config:
+    import: classpath:https-common.yaml
+server:
+  address: 127.0.0.1

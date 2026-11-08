@@ -41,6 +41,35 @@ jobs:
           bash ./mvnw --version
           docker info
 
+      - name: Generate disposable TLS material outside the checkout
+        shell: pwsh
+        working-directory: .
+        run: |
+          $lan = [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+            ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+            Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' -and
+              ($_.Address.IPAddressToString -match '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)') } |
+            Select-Object -First 1
+          if (-not $lan) { throw 'The LAN TLS test requires a private IPv4 address.' }
+          $directory = Join-Path $env:RUNNER_TEMP 'mspi-tls-material'
+          ./scripts/https/New-MspiTlsMaterial.ps1 -OutputDirectory $directory -LanAddress $lan.Address.IPAddressToString | Out-Null
+          $mode = & stat -c '%a' $directory
+          if ($mode -ne '700') { throw 'TLS directory permissions are not private.' }
+          $rejected = $false
+          try { ./scripts/https/New-MspiTlsMaterial.ps1 -OutputDirectory (Join-Path $env:GITHUB_WORKSPACE '.security-reports/forbidden-tls') }
+          catch { $rejected = $_.Exception.Message -like '*fuera de cualquier repositorio Git*' }
+          if (-not $rejected) { throw 'The generator allowed TLS material inside Git.' }
+          $target = Join-Path $env:RUNNER_TEMP 'mspi-tls-link-target'
+          New-Item -ItemType Directory -Path $target | Out-Null
+          $link = Join-Path $env:RUNNER_TEMP 'mspi-tls-link'
+          New-Item -ItemType SymbolicLink -Path $link -Target $target | Out-Null
+          $rejected = $false
+          try { ./scripts/https/New-MspiTlsMaterial.ps1 -OutputDirectory (Join-Path $link 'forbidden-tls') }
+          catch { $rejected = $_.Exception.Message -like '*enlaces o junctions*' }
+          if (-not $rejected) { throw 'The generator allowed an indirect TLS destination.' }
+          "MSPI_TEST_TLS_DIRECTORY=$directory" >> $env:GITHUB_ENV
+          "MSPI_TEST_TLS_LAN_ADDRESS=$($lan.Address.IPAddressToString)" >> $env:GITHUB_ENV
+
       - name: Compile, test with PostgreSQL and package
         run: bash ./mvnw --batch-mode --no-transfer-progress clean verify
 
