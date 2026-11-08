@@ -11,12 +11,13 @@ import tempfile
 
 PRIVATE_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".dump", ".backup"}
 PRIVATE_NAMES = {"id_rsa", "id_ed25519", ".pgpass", ".npmrc", ".pypirc", "credentials.json",
-                 ".gitleaksignore", ".gitleaks.toml", "server-password.txt", "ca-password.txt"}
+                 ".gitleaksignore", ".gitleaks.toml", "server-password.txt", "ca-password.txt", "db-admin-password", "db-runtime-password",
+                 "db-migrator-password", "db-admin-password.txt", "db-runtime-password.txt", "db-migrator-password.txt"}
 SECRET_NAME = re.compile(r"PASSWORD|CONTRASENA|SECRET|TOKEN|PRIVATE_KEY|API_KEY|ACCESS_KEY|CREDENTIAL", re.I)
 KEY = re.compile(r"[A-Z][A-Z0-9_]*")
 EXAMPLES = [".env", ".env.local", ".env.production", "mspi/.env", "nested/.env.local",
             "credentials.pem", "nested/client.key", "backup.dump", "secrets/access.json",
-            "nested/application-local.yaml", "nested/server-password.txt", "nested/ca-password.txt"]
+            "nested/application-local.yaml", "nested/server-password.txt", "nested/ca-password.txt", "nested/db-admin-password", "nested/db-runtime-password.txt"]
 
 
 def sensitive_path(name):

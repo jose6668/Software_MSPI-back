@@ -79,7 +79,7 @@ def main():
             assert not config["services"]["database"].get("ports"), "La base no debe publicar puertos"
             compose("build", "backend", timeout=300)
             compose("up", "-d", "database")
-            wait_until(lambda: compose("exec", "-T", "database", "pg_isready", "-U", "mspi_operator", "-d", "mspi",
+            wait_until(lambda: compose("exec", "-T", "database", "pg_isready", "-h", "127.0.0.1", "-U", "mspi_operator", "-d", "mspi",
                                       allow_failure=True).returncode == 0)
             sql((REPO / "mspi/src/main/resources/db/provisioning/common.sql").read_text())
             sql("ALTER ROLE mspi_common_runtime PASSWORD '" + runtime + "';\n"
