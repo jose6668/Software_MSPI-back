@@ -7,8 +7,11 @@ $path = Join-Path (Resolve-Path -LiteralPath $TlsDirectory).Path 'ca.crt'
 $certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($path)
 $constraints = @($certificate.Extensions | Where-Object {$_.Oid.Value -eq '2.5.29.19'})
 if ($certificate.HasPrivateKey -or $certificate.Subject -ne $certificate.Issuer -or $constraints.Count -ne 1 -or
-    -not $constraints[0].CertificateAuthority -or $certificate.NotAfter -lt [DateTime]::Now) {
-    throw 'Se requiere el certificado publico vigente de la CA local.'
+    -not $constraints[0].CertificateAuthority) {
+    throw 'Se requiere el certificado publico de la CA local.'
+}
+if (-not $Remove -and ($certificate.NotAfter -lt [DateTime]::Now -or $certificate.NotBefore -gt [DateTime]::Now)) {
+    throw 'No se puede confiar en una CA fuera de su periodo de vigencia.'
 }
 $store = New-Object Security.Cryptography.X509Certificates.X509Store('Root', 'CurrentUser')
 try {
