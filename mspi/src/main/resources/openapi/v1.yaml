@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.15.0'
+  version: '1.16.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1248,6 +1248,337 @@ paths:
           $ref: '#/components/responses/Problem' # INSPECCION_EVIDENCIAS_NO_DISPONIBLE u otro recurso no disponible
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarImplementacionesControl
+      summary: Lista implementaciones de la empresa
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista implementaciones de la empresa
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementationPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearImplementacionControl
+      summary: Registra una implementación propuesta
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateControlImplementation'
+      responses:
+        '201':
+          description: Registra una implementación propuesta
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    get:
+      operationId: consultarImplementacionControl
+      summary: Consulta una implementación y su verificación vigente
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta una implementación y su verificación vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/versiones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    get:
+      operationId: listarVersionesImplementacionControl
+      summary: Lista versiones históricas de una implementación
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista versiones históricas de una implementación
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlVersionPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/versiones/{versionId}/verificaciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+      - $ref: '#/components/parameters/ControlImplementationVersionId'
+    get:
+      operationId: listarVerificacionesControl
+      summary: Lista las verificaciones históricas de una versión
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista las verificaciones históricas de una versión
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlVerificationPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/iniciar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    post:
+      operationId: iniciarImplementacionControl
+      summary: Inicia la aplicación de un control propuesto
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRevision'
+      responses:
+        '200':
+          description: Inicia la aplicación de un control propuesto
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/confirmar-aplicacion:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    post:
+      operationId: confirmarAplicacionControl
+      summary: Confirma la aplicación con fecha y evidencia limpia
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyControlImplementation'
+      responses:
+        '200':
+          description: Confirma la aplicación con fecha y evidencia limpia
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/cambiar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    post:
+      operationId: cambiarImplementacionControl
+      summary: Abre una nueva versión de una implementación aplicada
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeControlImplementation'
+      responses:
+        '200':
+          description: Abre una nueva versión de una implementación aplicada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlImplementation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/verificar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+    post:
+      operationId: verificarImplementacionControl
+      summary: Registra una prueba y la vigencia de su verificación
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyControlImplementation'
+      responses:
+        '201':
+          description: Registra una prueba y la vigencia de su verificación
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlVerification'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/versiones/{versionId}/evidencias:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+      - $ref: '#/components/parameters/ControlImplementationVersionId'
+    get:
+      operationId: listarEvidenciasControl
+      summary: Lista adjuntos de una versión fuera de cuarentena
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista adjuntos de una versión fuera de cuarentena
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseEvidencePage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: cargarEvidenciaControl
+      summary: Carga un adjunto limpio en la versión vigente
+      description: Requiere AE o GS de la empresa, sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo, revisionEsperada]
+              properties:
+                archivo: {type: string, format: binary}
+                revisionEsperada: {type: integer, format: int64, minimum: 0}
+                descripcion: {type: string, maxLength: 1000}
+      responses:
+        '201':
+          description: Carga un adjunto limpio en la versión vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Location:
+              schema: {type: string, format: uri-reference}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlEvidenceUpload'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/implementaciones-control/{implementacionId}/versiones/{versionId}/evidencias/{evidenciaId}/archivo:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ControlImplementationId'
+      - $ref: '#/components/parameters/ControlImplementationVersionId'
+      - $ref: '#/components/parameters/ResponseEvidenceId'
+    get:
+      operationId: descargarEvidenciaControl
+      summary: Descarga un adjunto de una versión previa o vigente
+      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Descarga un adjunto de una versión previa o vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -1915,6 +2246,16 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ControlImplementationId:
+      name: implementacionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ControlImplementationVersionId:
+      name: versionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ResponseEvidenceId:
       name: evidenciaId
       in: path
@@ -2298,6 +2639,140 @@ components:
       required: [elementos, pagina, tamano, hayMas]
       properties:
         elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationFinding'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ControlDetails:
+      type: object
+      additionalProperties: false
+      required: [nombre, descripcion, alcance, trabajo, responsableId]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 250}
+        descripcion: {type: string, minLength: 1}
+        alcance: {type: string, minLength: 1}
+        trabajo: {type: string, minLength: 1}
+        responsableId: {type: string, format: uuid}
+        tipo: {type: [string, 'null'], enum: [PREVENTIVO, DETECTIVO, CORRECTIVO, null]}
+        modo: {type: [string, 'null'], enum: [MANUAL, AUTOMATICO, null]}
+    CreateControlImplementation:
+      type: object
+      additionalProperties: false
+      required: [versionCatalogoId, elementoId, detalle]
+      properties:
+        versionCatalogoId: {type: string, format: uuid}
+        elementoId: {type: string, format: uuid}
+        detalle: {$ref: '#/components/schemas/ControlDetails'}
+    ApplyControlImplementation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, fechaAplicacion, evidenciaId]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        fechaAplicacion: {type: string, format: date}
+        evidenciaId: {type: string, format: uuid}
+    ChangeControlImplementation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, detalle, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        detalle: {$ref: '#/components/schemas/ControlDetails'}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    VerifyControlImplementation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, prueba, fundamento, criteriosEvaluados, criteriosCumplidos, proximaRevision, evidenciaId]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        prueba: {type: string, minLength: 1}
+        fundamento: {type: string, minLength: 1}
+        criteriosEvaluados: {type: integer, minimum: 1}
+        criteriosCumplidos: {type: integer, minimum: 0}
+        proximaRevision: {type: string, format: date}
+        evidenciaId: {type: string, format: uuid}
+    ControlApplication:
+      type: object
+      additionalProperties: false
+      required: [fechaAplicacion, evidenciaId, registradaPor, registradaEn]
+      properties:
+        fechaAplicacion: {type: string, format: date}
+        evidenciaId: {type: string, format: uuid}
+        registradaPor: {type: string, format: uuid}
+        registradaEn: {type: string, format: date-time}
+    ControlVersion:
+      type: object
+      additionalProperties: false
+      required: [versionId, numero, detalle, motivoCambio, creadaPor, creadaEn, aplicacion]
+      properties:
+        versionId: {type: string, format: uuid}
+        numero: {type: integer, minimum: 1}
+        detalle: {$ref: '#/components/schemas/ControlDetails'}
+        motivoCambio: {type: [string, 'null']}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+        aplicacion: {anyOf: [{$ref: '#/components/schemas/ControlApplication'}, {type: 'null'}]}
+    ControlImplementation:
+      type: object
+      additionalProperties: false
+      required: [implementacionId, versionCatalogoId, elementoId, estado, revision, versionActual, resultadoVigente, ultimaVerificacionId, causaSinVigencia]
+      properties:
+        implementacionId: {type: string, format: uuid}
+        versionCatalogoId: {type: string, format: uuid}
+        elementoId: {type: string, format: uuid}
+        estado: {type: string, enum: [PROPUESTO, EN_IMPLEMENTACION, IMPLEMENTADO]}
+        revision: {type: integer, format: int64, minimum: 0}
+        versionActual: {$ref: '#/components/schemas/ControlVersion'}
+        resultadoVigente: {type: string, enum: [SIN_VERIFICAR, EFECTIVO, PARCIALMENTE_EFECTIVO, NO_EFECTIVO]}
+        ultimaVerificacionId: {type: [string, 'null'], format: uuid}
+        causaSinVigencia: {type: [string, 'null'], enum: [VENCIDA, EVIDENCIA_BLOQUEADA, null]}
+    ControlVerification:
+      type: object
+      additionalProperties: false
+      required: [verificacionId, versionId, revisionImplementacion, resultado, prueba, fundamento, criteriosEvaluados, criteriosCumplidos, proximaRevision, evidenciaId, verificadaPor, verificadaEn]
+      properties:
+        verificacionId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        revisionImplementacion: {type: integer, format: int64, minimum: 0}
+        resultado: {type: string, enum: [SIN_VERIFICAR, EFECTIVO, PARCIALMENTE_EFECTIVO, NO_EFECTIVO]}
+        prueba: {type: string, minLength: 1}
+        fundamento: {type: string, minLength: 1}
+        criteriosEvaluados: {type: integer, minimum: 1}
+        criteriosCumplidos: {type: integer, minimum: 0}
+        proximaRevision: {type: string, format: date}
+        evidenciaId: {type: string, format: uuid}
+        verificadaPor: {type: string, format: uuid}
+        verificadaEn: {type: string, format: date-time}
+    ControlEvidenceUpload:
+      type: object
+      additionalProperties: false
+      required: [evidencia, revisionImplementacion]
+      properties:
+        evidencia: {$ref: '#/components/schemas/ResponseEvidence'}
+        revisionImplementacion: {type: integer, format: int64, minimum: 0}
+    ControlImplementationPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ControlImplementation'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ControlVersionPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ControlVersion'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ControlVerificationPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ControlVerification'}}
         pagina: {type: integer, minimum: 0}
         tamano: {type: integer, minimum: 1, maximum: 100}
         hayMas: {type: boolean}

@@ -300,7 +300,7 @@ class InvitationTests {
         var tenant = database.reserveAndProvisionTenant();
         database.tenantFlyway(tenant).migrate();
         UUID id = tenant.scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '8' WHERE id = ?", id);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '9' WHERE id = ?", id);
         return id;
     }
 

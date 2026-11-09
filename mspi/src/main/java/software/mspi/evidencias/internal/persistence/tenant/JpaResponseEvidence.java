@@ -15,22 +15,29 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.stereotype.Service;
 import software.mspi.auditoria.api.ActivityLog;
 import software.mspi.auditoria.api.SecurityIncidents;
+import software.mspi.controles.api.ControlImplementations;
 import software.mspi.empresas.api.CompanyAccess;
 import software.mspi.empresas.api.CompanyPermission;
 import software.mspi.empresas.api.TenantUnitOfWork;
 import software.mspi.evaluaciones.api.EvaluationDrafts;
 import software.mspi.evidencias.api.EvidenceFailure;
+import software.mspi.evidencias.api.ControlEvidence;
 import software.mspi.evidencias.api.ResponseEvidence;
+import software.mspi.evidencias.api.ResponseEvidence.Download;
+import software.mspi.evidencias.api.ResponseEvidence.Metadata;
+import software.mspi.evidencias.api.ResponseEvidence.Page;
+import java.util.function.Supplier;
 
 import static software.mspi.evidencias.api.EvidenceFailure.Reason.*;
 
 @Service
 @ConditionalOnProperty(name = {"mspi.tenancy.enabled", "mspi.evidence.enabled"}, havingValue = "true")
 @EnableConfigurationProperties(EvidenceSettings.class)
-class JpaResponseEvidence implements ResponseEvidence {
+class JpaResponseEvidence implements ResponseEvidence, ControlEvidence {
     private final TenantUnitOfWork work;
     private final CompanyAccess access;
     private final EvaluationDrafts evaluations;
+    private final ControlImplementations controls;
     private final ActivityLog audit;
     private final EvidenceSettings settings;
     private final PrivateEvidenceFiles files;
@@ -40,12 +47,14 @@ class JpaResponseEvidence implements ResponseEvidence {
     @PersistenceContext(unitName = "enterprise")
     private EntityManager entities;
 
-    JpaResponseEvidence(TenantUnitOfWork work, CompanyAccess access, EvaluationDrafts evaluations, ActivityLog audit,
+    JpaResponseEvidence(TenantUnitOfWork work, CompanyAccess access, EvaluationDrafts evaluations, ControlImplementations controls,
+                        ActivityLog audit,
                         EvidenceSettings settings, EvidenceAntimalware antimalware, SecurityIncidents incidents)
             throws IOException {
         this.work = work;
         this.access = access;
         this.evaluations = evaluations;
+        this.controls = controls;
         this.audit = audit;
         this.settings = settings;
         this.files = new PrivateEvidenceFiles(settings.directory());
@@ -54,9 +63,18 @@ class JpaResponseEvidence implements ResponseEvidence {
     }
 
     @Override
-    public Metadata upload(Target target, long revision, String name, String description, InputStream input) {
-        // Check authorization and draft revision before scanning; recheck at publication.
-        evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision, Optional::empty);
+    public Metadata upload(ResponseEvidence.Target target, long revision, String name, String description, InputStream input) {
+        return upload(StoreTarget.response(target), revision, name, description, input);
+    }
+
+    @Override
+    public Metadata upload(ControlEvidence.Target target, long revision, String name, String description, InputStream input) {
+        return upload(StoreTarget.control(target), revision, name, description, input);
+    }
+
+    private Metadata upload(StoreTarget target, long revision, String name, String description, InputStream input) {
+        // Check authorization and revision before scanning; recheck at publication.
+        attach(target, revision, Optional::empty);
         Long quota = settings.quotas().get(target.company());
         if (quota == null) throw new EvidenceFailure(QUOTA_NOT_CONFIGURED);
         try (var lease = antimalware.reserve()) {
@@ -64,13 +82,20 @@ class JpaResponseEvidence implements ResponseEvidence {
             var inspection = lease.inspect(bytes);
             if (!clean(target, inspection)) throw new EvidenceFailure(MALWARE);
             var content = EvidenceContent.inspect(name, bytes);
-            return evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision,
+            return attach(target, revision,
                     () -> publish(target, name, description, content, inspection, quota))
                     .orElseThrow(() -> new EvidenceFailure(STORAGE));
         }
     }
 
-    private Optional<Metadata> publish(Target target, String name, String description, EvidenceContent content,
+    private <T> Optional<T> attach(StoreTarget target, long revision, Supplier<Optional<T>> publish) {
+        if (target.implementation() != null) {
+            return controls.attachEvidence(controlScope(target), target.implementation(), target.version(), revision, publish);
+        }
+        return evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision, publish);
+    }
+
+    private Optional<Metadata> publish(StoreTarget target, String name, String description, EvidenceContent content,
                                       EvidenceAntimalware.Result inspection, long quota) {
         var record = new EvidenceRecord(target, name, description, content);
         record.inspection = "LIMPIA";
@@ -90,34 +115,55 @@ class JpaResponseEvidence implements ResponseEvidence {
             recordOutcome(target, record, "ALMACENAMIENTO");
             return Optional.empty();
         }
-        access.require(target.company(), CompanyPermission.EDIT_EVALUATION_DRAFT);
+        access.require(target.company(), target.editPermission());
         record.state = "DISPONIBLE";
         recordOutcome(target, record, null);
         return Optional.of(record.metadata());
     }
 
     @Override
-    public Page list(Target target, int page, int size) {
-        return work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
-            evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
+    public Page list(ResponseEvidence.Target target, int page, int size) {
+        return list(StoreTarget.response(target), page, size);
+    }
+
+    @Override
+    public Page list(ControlEvidence.Target target, int page, int size) {
+        return list(StoreTarget.control(target), page, size);
+    }
+
+    private Page list(StoreTarget target, int page, int size) {
+        return work.execute(target.actor(), target.company(), target.readPermission(), () -> {
+            requireReadable(target);
             long offset = (long) page * size;
             if (offset > Integer.MAX_VALUE) return new Page(List.of(), page, size, false);
-            var rows = entities.createQuery("""
-                    select e from EvidenceRecord e
-                    where e.company = :company and e.evaluation = :evaluation and e.response = :response
-                        and e.state = 'DISPONIBLE' and e.inspection <> 'BLOQUEADA'
+            boolean control = target.implementation() != null;
+            String destination = control ? "e.implementation = :parent and e.version = :destination"
+                    : "e.evaluation = :parent and e.response = :destination";
+            var rows = entities.createQuery(("""
+                    select e from EvidenceRecord e where e.company = :company
+                        and %s and e.state = 'DISPONIBLE' and e.inspection <> 'BLOQUEADA'
                     order by e.created, e.id
-                    """, EvidenceRecord.class).setParameter("company", target.company())
-                    .setParameter("evaluation", target.evaluation()).setParameter("response", target.response())
+                    """).formatted(destination), EvidenceRecord.class).setParameter("company", target.company())
+                    .setParameter("parent", control ? target.implementation() : target.evaluation())
+                    .setParameter("destination", control ? target.version() : target.response())
                     .setFirstResult((int) offset).setMaxResults(size + 1).getResultList();
             return new Page(rows.stream().limit(size).map(EvidenceRecord::metadata).toList(), page, size, rows.size() > size);
         });
     }
 
     @Override
-    public Download download(Target target, UUID evidence) {
-        var record = work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
-            evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
+    public Download download(ResponseEvidence.Target target, UUID evidence) {
+        return download(StoreTarget.response(target), evidence);
+    }
+
+    @Override
+    public Download download(ControlEvidence.Target target, UUID evidence) {
+        return download(StoreTarget.control(target), evidence);
+    }
+
+    private Download download(StoreTarget target, UUID evidence) {
+        var record = work.execute(target.actor(), target.company(), target.readPermission(), () -> {
+            requireReadable(target);
             return available(target, evidence, LockModeType.NONE).orElseThrow(() -> new EvidenceFailure(MISSING));
         });
         try (var lease = antimalware.reserve()) {
@@ -138,9 +184,9 @@ class JpaResponseEvidence implements ResponseEvidence {
         }
     }
 
-    private Metadata recordInspection(Target target, UUID evidence, EvidenceAntimalware.Result inspection) {
-        return work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
-            evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
+    private Metadata recordInspection(StoreTarget target, UUID evidence, EvidenceAntimalware.Result inspection) {
+        return work.execute(target.actor(), target.company(), target.readPermission(), () -> {
+            requireReadable(target);
             var record = available(target, evidence, LockModeType.PESSIMISTIC_WRITE)
                     .orElseThrow(() -> new EvidenceFailure(MISSING));
             String previous = record.inspection;
@@ -159,7 +205,8 @@ class JpaResponseEvidence implements ResponseEvidence {
     }
 
     @Override
-    public Optional<String> verifiedHash(Target target, UUID evidence) {
+    public Optional<String> verifiedHash(ResponseEvidence.Target response, UUID evidence) {
+        var target = StoreTarget.response(response);
         return work.execute(target.actor(), target.company(), CompanyPermission.EDIT_EVALUATION_DRAFT, () ->
                 available(target, evidence, LockModeType.NONE).flatMap(record -> {
                     try (var lease = antimalware.reserve()) {
@@ -170,16 +217,45 @@ class JpaResponseEvidence implements ResponseEvidence {
                 }));
     }
 
-    private boolean clean(Target target, EvidenceAntimalware.Result inspection) {
+    @Override
+    public Optional<String> verifiedHash(ControlImplementations.Scope scope, UUID implementation, UUID version, UUID evidence) {
+        var target = StoreTarget.control(new ControlEvidence.Target(scope, implementation, version));
+        var record = work.execute(target.actor(), target.company(), target.editPermission(),
+                () -> available(target, evidence, LockModeType.NONE));
+        if (record.isEmpty()) return Optional.empty();
+        try (var lease = antimalware.reserve()) {
+            var attachment = record.get();
+            var inspection = lease.inspect(files.read(attachment));
+            boolean clean = clean(target, inspection);
+            recordInspection(target, evidence, inspection);
+            return clean ? Optional.of(attachment.digest) : Optional.empty();
+        } catch (IOException failure) {
+            return Optional.empty();
+        } catch (EvidenceFailure failure) {
+            if (failure.reason() == MISSING) return Optional.empty();
+            throw failure;
+        }
+    }
+
+    private void requireReadable(StoreTarget target) {
+        if (target.implementation() != null) {
+            controls.requireVersion(controlScope(target), target.implementation(), target.version());
+        } else {
+            evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
+        }
+    }
+
+    private boolean clean(StoreTarget target, EvidenceAntimalware.Result inspection) {
         if (inspection.clean()) return true;
         incidents.record(SecurityIncidents.Type.AMENAZA_EVIDENCIA, target.correlation());
         return false;
     }
 
-    private Optional<EvidenceRecord> available(Target target, UUID evidence, LockModeType lock) {
+    private Optional<EvidenceRecord> available(StoreTarget target, UUID evidence, LockModeType lock) {
         return Optional.ofNullable(entities.find(EvidenceRecord.class, evidence, lock))
-                .filter(record -> target.company().equals(record.company) && target.evaluation().equals(record.evaluation)
-                        && target.response().equals(record.response) && "DISPONIBLE".equals(record.state)
+                .filter(record -> target.company().equals(record.company) && Objects.equals(target.evaluation(), record.evaluation)
+                        && Objects.equals(target.response(), record.response) && Objects.equals(target.implementation(), record.implementation)
+                        && Objects.equals(target.version(), record.version) && "DISPONIBLE".equals(record.state)
                         && !"BLOQUEADA".equals(record.inspection));
     }
 
@@ -191,13 +267,39 @@ class JpaResponseEvidence implements ResponseEvidence {
                 .setParameter("maximum", maximumCurrentUsage).executeUpdate();
     }
 
-    private void recordOutcome(Target target, EvidenceRecord record, String reason) {
+    private void recordOutcome(StoreTarget target, EvidenceRecord record, String reason) {
         entities.flush();
         audit.append(new ActivityLog.Event(record.company, target.actor(), "CARGAR_EVIDENCIA", "EVIDENCIA",
                 record.id, "PENDIENTE", record.state, reason, target.correlation()));
     }
 
-    private static EvaluationDrafts.Scope scope(Target target) {
+    private static EvaluationDrafts.Scope scope(StoreTarget target) {
         return new EvaluationDrafts.Scope(target.actor(), target.company(), target.correlation());
+    }
+
+    private static ControlImplementations.Scope controlScope(StoreTarget target) {
+        return new ControlImplementations.Scope(target.actor(), target.company(), target.correlation());
+    }
+
+    record StoreTarget(UUID actor, UUID company, UUID correlation, UUID evaluation, UUID response,
+                       UUID implementation, UUID version) {
+        static StoreTarget response(ResponseEvidence.Target target) {
+            return new StoreTarget(target.actor(), target.company(), target.correlation(), target.evaluation(), target.response(),
+                    null, null);
+        }
+
+        static StoreTarget control(ControlEvidence.Target target) {
+            var scope = target.scope();
+            return new StoreTarget(scope.actor(), scope.company(), scope.correlation(), null, null,
+                    target.implementation(), target.version());
+        }
+
+        CompanyPermission readPermission() {
+            return implementation == null ? CompanyPermission.READ_EVALUATIONS : CompanyPermission.READ_CONTROLS;
+        }
+
+        CompanyPermission editPermission() {
+            return implementation == null ? CompanyPermission.EDIT_EVALUATION_DRAFT : CompanyPermission.EDIT_CONTROLS;
+        }
     }
 }

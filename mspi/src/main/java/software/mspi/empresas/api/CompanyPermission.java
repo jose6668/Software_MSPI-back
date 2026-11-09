@@ -15,6 +15,8 @@ public enum CompanyPermission {
     READ_REFERENCE_CATALOGS(AE, GS, AU), // PER-18
     READ_EVALUATIONS(AE, GS, AU),        // PER-19
     EDIT_EVALUATION_DRAFT(AE, GS),       // PER-20
+    READ_CONTROLS(AE, GS, AU),           // PER-23/26, operational consultation
+    EDIT_CONTROLS(AE, GS),              // PER-26
     EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15

@@ -92,6 +92,10 @@ class CompanyAuthorizationTests {
     private static final String CATALOGS = "/api/v1/empresas/{empresaId}/catalogos";
     private static final String METHODOLOGIES = "/api/v1/empresas/{empresaId}/metodologias";
     private static final String EVALUATIONS = "/api/v1/empresas/{empresaId}/evaluaciones";
+    private static final String CONTROL_IMPLEMENTATIONS = "/api/v1/empresas/{empresaId}/implementaciones-control";
+    private static final String CONTROL_IMPLEMENTATION = CONTROL_IMPLEMENTATIONS + "/{implementacionId}";
+    private static final String CONTROL_VERSION = CONTROL_IMPLEMENTATION + "/versiones/{versionId}";
+    private static final String CONTROL_EVIDENCE = CONTROL_VERSION + "/evidencias";
     private static final String EVALUATION_RESPONSES = EVALUATIONS + "/{evaluacionId}/respuestas";
     private static final String EVALUATION_EVIDENCE = EVALUATION_RESPONSES + "/{respuestaId}/evidencias";
     private static final String EVIDENCE_FILE = EVALUATION_EVIDENCE + "/{evidenciaId}/archivo";
@@ -137,7 +141,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "8");
+            fixture.metadata(fixture.third, "ACTIVA", "9");
         }
     }
 
@@ -180,13 +184,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "8");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "9");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "8");
+            fixture.metadata(fixture.first, "ACTIVA", "9");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -420,7 +424,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '8' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '9' WHERE id = ?", company);
         return company;
     }
 
@@ -1003,11 +1007,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "8");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "9");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "8");
+            fixture.metadata(fixture.first, "ACTIVA", "9");
         }
     }
 
@@ -1727,6 +1731,164 @@ class CompanyAuthorizationTests {
                 Map.of("revisionEsperada", revision), evaluation, response);
     }
 
+    @Test
+    void implementsAndVerifiesControlWithHistoricalVersionsAndCompanyIsolation() throws Exception {
+        var editor = account();
+        member(editor, a(), "GS");
+        member(editor, b(), "GS");
+        var session = login(editor, "192.0.2.19");
+        var auditor = account();
+        member(auditor, a(), "AU");
+        var reader = login(auditor, "192.0.2.19");
+        UUID edition = evaluationCatalog(new EvaluationItem("C", "CONTROL", "DOM"),
+                new EvaluationItem("4.1", "CLAUSULA", "CLAUSULA_4"));
+        UUID element = catalogElement(a(), session, edition, "C");
+        UUID clause = catalogElement(a(), session, edition, "4.1");
+        var detail = controlDetail(a(), session);
+        var foreign = controlDetail(b(), session);
+        catalogPost(CONTROL_IMPLEMENTATIONS, a(), session,
+                Map.of("versionCatalogoId", edition, "elementoId", clause, "detalle", detail))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CONTROL_CATALOGO_NO_DISPONIBLE"));
+        catalogPost(CONTROL_IMPLEMENTATIONS, a(), session,
+                Map.of("versionCatalogoId", edition, "elementoId", element, "detalle", foreign))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("RESPONSABLE_NO_DISPONIBLE"));
+        var created = catalogPost(CONTROL_IMPLEMENTATIONS, a(), session,
+                Map.of("versionCatalogoId", edition, "elementoId", element, "detalle", detail))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("PROPUESTO"))
+                .andExpect(jsonPath("$.resultadoVigente").value("SIN_VERIFICAR")).andReturn();
+        UUID control = id(created, "implementacionId");
+        UUID version = nestedId(created, "versionActual", "versionId");
+        mvc.perform(get(CONTROL_IMPLEMENTATIONS, a()).session(reader))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].versionActual.versionId").value(version.toString()));
+        mvc.perform(get(CONTROL_IMPLEMENTATION, b(), control).session(session)).andExpect(status().isNotFound());
+        catalogPost(CONTROL_IMPLEMENTATION + "/iniciar", a(), reader, Map.of("revisionEsperada", 0), control)
+                .andExpect(status().isForbidden());
+        mvc.perform(post(CONTROL_IMPLEMENTATION + "/iniciar", a(), control).session(session)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"revisionEsperada\":0}"))
+                .andExpect(status().isForbidden());
+        catalogPost(CONTROL_IMPLEMENTATION + "/iniciar", a(), session, Map.of("revisionEsperada", 0), control)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("EN_IMPLEMENTACION"));
+        UUID application = uploadControlEvidence(a(), control, version, session, 1);
+        var apply = Map.of("revisionEsperada", 2, "fechaAplicacion", "2026-01-01", "evidenciaId", application);
+        catalogPost(CONTROL_IMPLEMENTATION + "/confirmar-aplicacion", a(), session, apply, control)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("IMPLEMENTADO"))
+                .andExpect(jsonPath("$.resultadoVigente").value("SIN_VERIFICAR"));
+
+        UUID proof = uploadControlEvidence(a(), control, version, session, 3);
+        var test = controlTest(4, proof, 2, 1, "2099-12-31");
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", a(), session, test, control)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.resultado").value("PARCIALMENTE_EFECTIVO"))
+                .andExpect(jsonPath("$.revisionImplementacion").value(5));
+        mvc.perform(get(CONTROL_IMPLEMENTATION, a(), control).session(reader))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultadoVigente").value("PARCIALMENTE_EFECTIVO"));
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", a(), session, controlTest(5, proof, 2, 2, "2099-12-31"), control)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EVIDENCIA_CONTROL_YA_VERIFICADA"));
+
+        String schema = fixture.first.scope().schema();
+        // Move the fixture's review date to the past to test effective reads without changing the host clock.
+        sql("UPDATE " + schema + ".verificaciones_control SET fecha_verificacion = '2026-01-01',"
+                + " proxima_revision = '2026-01-02' WHERE evidencia_id = ?", proof);
+        mvc.perform(get(CONTROL_IMPLEMENTATION, a(), control).session(reader))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultadoVigente").value("SIN_VERIFICAR"))
+                .andExpect(jsonPath("$.causaSinVigencia").value("VENCIDA"));
+
+        catalogPost(CONTROL_IMPLEMENTATION + "/cambiar", a(), session,
+                Map.of("revisionEsperada", 5, "detalle", detail, "motivo", "Cambió el alcance técnico"), control)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("EN_IMPLEMENTACION"))
+                .andExpect(jsonPath("$.versionActual.numero").value(2))
+                .andExpect(jsonPath("$.resultadoVigente").value("SIN_VERIFICAR"));
+        mvc.perform(get(CONTROL_VERSION + "/verificaciones", a(), control, version).session(reader))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].resultado").value("PARCIALMENTE_EFECTIVO"));
+        mvc.perform(get(CONTROL_EVIDENCE + "/{evidenciaId}/archivo", a(), control, version, proof).session(reader))
+                .andExpect(status().isOk()).andExpect(content().bytes(image("png")));
+        mvc.perform(controlEvidenceUpload(a(), control, version, session, 6)).andExpect(status().isConflict());
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE verificaciones_control SET fundamento = 'alterado'"), "42501");
+        }
+    }
+
+    @Test
+    void controlVerificationRejectsWrongEvidenceAndLosesValidityWhenQuarantined() throws Exception {
+        var editor = account();
+        member(editor, b(), "AE");
+        var session = login(editor, "192.0.2.19");
+        UUID edition = evaluationCatalog(new EvaluationItem("B", "CONTROL", "DOM"));
+        var detail = controlDetail(b(), session);
+        var created = catalogPost(CONTROL_IMPLEMENTATIONS, b(), session, Map.of("versionCatalogoId", edition,
+                "elementoId", catalogElement(b(), session, edition, "B"), "detalle", detail))
+                .andExpect(status().isCreated()).andReturn();
+        UUID control = id(created, "implementacionId");
+        UUID version = nestedId(created, "versionActual", "versionId");
+        catalogPost(CONTROL_IMPLEMENTATION + "/iniciar", b(), session, Map.of("revisionEsperada", 0), control)
+                .andExpect(status().isOk());
+        catalogPost(CONTROL_IMPLEMENTATION + "/confirmar-aplicacion", b(), session,
+                Map.of("revisionEsperada", 1, "fechaAplicacion", "2026-01-01", "evidenciaId", UUID.randomUUID()), control)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EVIDENCIA_CONTROL_NO_DISPONIBLE"));
+        UUID applied = uploadControlEvidence(b(), control, version, session, 1);
+        catalogPost(CONTROL_IMPLEMENTATION + "/confirmar-aplicacion", b(), session,
+                Map.of("revisionEsperada", 2, "fechaAplicacion", "2026-01-01", "evidenciaId", applied), control)
+                .andExpect(status().isOk());
+        UUID proof = uploadControlEvidence(b(), control, version, session, 3);
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", b(), session, controlTest(4, proof, 1, 2, "2099-12-31"), control)
+                .andExpect(status().isBadRequest());
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", b(), session, controlTest(4, proof, 1, 0, "2026-01-01"), control)
+                .andExpect(status().isBadRequest());
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", b(), session, controlTest(4, proof, 1, 0, "2099-12-31"), control)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.resultado").value("NO_EFECTIVO"));
+        try {
+            clamd.verdict = bytes -> "stream: MSPI-Test FOUND";
+            mvc.perform(get(CONTROL_EVIDENCE + "/{evidenciaId}/archivo", b(), control, version, proof).session(session))
+                    .andExpect(status().is(422));
+        } finally {
+            clamd.verdict = bytes -> "stream: OK";
+        }
+        mvc.perform(get(CONTROL_IMPLEMENTATION, b(), control).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.resultadoVigente").value("SIN_VERIFICAR"))
+                .andExpect(jsonPath("$.causaSinVigencia").value("EVIDENCIA_BLOQUEADA"));
+        mvc.perform(get(CONTROL_VERSION + "/verificaciones", b(), control, version).session(session))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].resultado").value("NO_EFECTIVO"));
+    }
+
+    private UUID catalogElement(UUID company, MockHttpSession session, UUID edition, String code) throws Exception {
+        var listing = mvc.perform(get(CATALOGS + "/{versionId}/elementos", company, edition).session(session).param("codigo", code))
+                .andExpect(status().isOk()).andReturn();
+        return UUID.fromString(mapper.readTree(listing.getResponse().getContentAsByteArray()).path("elementos")
+                .get(0).path("elementoId").asString());
+    }
+
+    private Map<String, Object> controlDetail(UUID company, MockHttpSession session) throws Exception {
+        UUID responsible = id(catalogPost(BUSINESS_RESPONSIBLES, company, session, Map.of("nombre", "Dueño de control", "tipo", "CARGO"))
+                .andExpect(status().isCreated()).andReturn(), "responsableId");
+        return Map.of("nombre", "Control operativo", "descripcion", "Descripción de la aplicación",
+                "alcance", "Área de prueba", "trabajo", "Revisión periódica", "responsableId", responsible, "tipo", "DETECTIVO",
+                "modo", "MANUAL");
+    }
+
+    private UUID uploadControlEvidence(UUID company, UUID control, UUID version, MockHttpSession session, long revision)
+            throws Exception {
+        return nestedId(mvc.perform(controlEvidenceUpload(company, control, version, session, revision))
+                .andExpect(status().isCreated()).andReturn(), "evidencia", "evidenciaId");
+    }
+
+    private static MockMultipartHttpServletRequestBuilder controlEvidenceUpload(UUID company, UUID control, UUID version,
+            MockHttpSession session, long revision) throws IOException {
+        var request = multipart(CONTROL_EVIDENCE, company, control, version)
+                .file(new MockMultipartFile("archivo", "control.png", "image/png", image("png")));
+        request.session(session).param("revisionEsperada", Long.toString(revision)).with(csrf().asHeader());
+        return request;
+    }
+
+    private UUID nestedId(org.springframework.test.web.servlet.MvcResult result, String object, String field) throws Exception {
+        return UUID.fromString(mapper.readTree(result.getResponse().getContentAsByteArray()).path(object).path(field).asString());
+    }
+
+    private static Map<String, Object> controlTest(long revision, UUID evidence, int total, int met, String due) {
+        return Map.of("revisionEsperada", revision, "prueba", "Se revisan los criterios",
+                "fundamento", "Acta de prueba de control", "criteriosEvaluados", total, "criteriosCumplidos", met,
+                "proximaRevision", due, "evidenciaId", evidence);
+    }
+
     private UUID f1Catalog() throws SQLException {
         UUID catalog = UUID.fromString("18f10000-0000-4000-8000-000000000001");
         UUID version = UUID.fromString("18f10000-0000-4000-8000-000000000002");
@@ -1857,7 +2019,14 @@ class CompanyAuthorizationTests {
     }
 
     private MockHttpSession login(Account account) throws Exception {
-        var result = mvc.perform(post("/api/v1/identidad/sesion").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        return login(account, "127.0.0.1");
+    }
+
+    private MockHttpSession login(Account account, String address) throws Exception {
+        var result = mvc.perform(post("/api/v1/identidad/sesion").with(csrf()).with(request -> {
+                    request.setRemoteAddr(address);
+                    return request;
+                }).contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(Map.of("correo", account.email(), "contrasena", account.password()))))
                 .andExpect(status().isOk()).andReturn();
         return (MockHttpSession) result.getRequest().getSession(false);

@@ -54,3 +54,21 @@ class RestoreSafetyTests(unittest.TestCase):
         (self.root / "manifest.json").write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, "huellas de las evidencias"):
             recovery.read_bundle(self.root)
+
+    def test_control_inventory_preserves_v8_manifests_and_verifies_v9(self):
+        company = "00000000-0000-4000-8000-000000000001"
+        schema = "emp_" + company.replace("-", "")
+        evidence = {"evaluaciones": 2, "cuota_ocupada": 0, "evidencias": []}
+        controls = {"implementaciones": 1, "versiones": 2, "aplicaciones": 1, "verificaciones": 1}
+        for version in ("8", "9"):
+            registry = {"empresas": [[company, schema, "ACTIVA", version]]}
+            queries = [registry, True, dict(evidence)]
+            if version == "9":
+                queries.append(controls)
+            with patch.object(recovery, "sql", side_effect=queries) as sql:
+                inventory = recovery.inventory("postgres")
+                expected = dict(evidence)
+                if version == "9":
+                    expected["controles"] = controls
+                    self.assertIn("verificaciones_control", sql.call_args.args[1])
+                self.assertEqual({company: expected}, inventory["companies"])

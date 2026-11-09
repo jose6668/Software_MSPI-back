@@ -98,6 +98,14 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, ApiEvidenceController.EVIDENCE,
                                 ApiEvidenceController.CONTENT).authenticated()
                         .requestMatchers(HttpMethod.POST, ApiEvidenceController.EVIDENCE).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiControlImplementationController.CONTROLS,
+                                ApiControlImplementationController.CONTROL, ApiControlImplementationController.VERSIONS,
+                                ApiControlImplementationController.VERIFICATIONS, ApiControlEvidenceController.EVIDENCE,
+                                ApiControlEvidenceController.CONTENT).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiControlImplementationController.CONTROLS,
+                                ApiControlImplementationController.START, ApiControlImplementationController.APPLY,
+                                ApiControlImplementationController.CHANGE, ApiControlImplementationController.VERIFY,
+                                ApiControlEvidenceController.EVIDENCE).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

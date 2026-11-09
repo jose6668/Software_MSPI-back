@@ -54,6 +54,7 @@ public final class TenantRuntimeVerifier {
             }
             verifyCatalogGrants(connection, scope);
             verifyEvaluationGrants(connection, scope);
+            verifyControlGrants(connection, scope);
         }
     }
 
@@ -123,6 +124,8 @@ public final class TenantRuntimeVerifier {
                         AND has_column_privilege(c.oid, 'descripcion', 'UPDATE')
                         AND NOT has_column_privilege(c.oid, 'respuesta_id', 'UPDATE')
                     WHEN 'evidencias' THEN has_column_privilege(c.oid, 'id', 'INSERT')
+                        AND has_column_privilege(c.oid, 'implementacion_id', 'INSERT')
+                        AND has_column_privilege(c.oid, 'version_implementacion_id', 'INSERT')
                         AND NOT has_column_privilege(c.oid, 'modalidad', 'INSERT')
                         AND NOT has_column_privilege(c.oid, 'estado_carga', 'INSERT')
                         AND has_column_privilege(c.oid, 'estado_carga', 'UPDATE')
@@ -145,6 +148,32 @@ public final class TenantRuntimeVerifier {
             try (var rows = statement.executeQuery()) {
                 if (!rows.next() || rows.getInt(1) != 5) {
                     throw new IllegalStateException("Permisos de evaluación y evidencias incompatibles.");
+                }
+            }
+        }
+    }
+
+    private static void verifyControlGrants(Connection connection, MigrationScope scope) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ? AND c.relkind = 'r' AND pg_get_userbyid(c.relowner) = ?
+                  AND c.relname IN ('implementaciones_control', 'versiones_implementacion_control',
+                                    'aplicaciones_control', 'verificaciones_control')
+                  AND has_table_privilege(c.oid, 'SELECT') AND has_table_privilege(c.oid, 'INSERT')
+                  AND NOT has_table_privilege(c.oid, 'DELETE,TRUNCATE,TRIGGER,REFERENCES,UPDATE')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_attribute a
+                    WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                      AND (c.relname = 'implementaciones_control' AND a.attname IN ('estado', 'numero_version', 'revision'))
+                          IS DISTINCT FROM has_column_privilege(c.oid, a.attnum, 'UPDATE')
+                  )
+                """)) {
+            statement.setString(1, scope.schema());
+            statement.setString(2, scope.migrationRole());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next() || rows.getInt(1) != 4) {
+                    throw new IllegalStateException("Permisos de implementaciones de control incompatibles.");
                 }
             }
         }
