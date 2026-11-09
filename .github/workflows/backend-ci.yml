@@ -81,6 +81,36 @@ jobs:
         working-directory: .
         run: python3 scripts/resources/test_container_budget.py
 
+      - name: Export resolved Maven dependencies
+        run: |
+          bash ./mvnw --batch-mode --no-transfer-progress \
+            org.apache.maven.plugins:maven-dependency-plugin:3.10.0:tree \
+            -DoutputType=json -DoutputFile=target/dependencies.json
+
+      - name: Check Maven and deployment images for vulnerabilities
+        working-directory: .
+        run: |
+          tool="$RUNNER_TEMP/mspi-trivy"
+          mkdir -p "$tool"
+          curl --fail --silent --show-error --location --retry 2 --max-time 120 \
+            https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-64bit.tar.gz \
+            -o "$tool/trivy.tar.gz"
+          printf '%s  %s\n' bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf "$tool/trivy.tar.gz" | sha256sum -c -
+          tar -xzf "$tool/trivy.tar.gz" -C "$tool" trivy
+          python3 -m unittest discover -s .github/scripts -p test_check_vulnerabilities.py
+          python3 .github/scripts/check_vulnerabilities.py \
+            --maven-tree mspi/target/dependencies.json --trivy "$tool/trivy" \
+            --reports "$RUNNER_TEMP/mspi-vulnerabilities" --cache "$tool/cache"
+
+      - name: Upload vulnerability reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vulnerability-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mspi-vulnerabilities/
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
