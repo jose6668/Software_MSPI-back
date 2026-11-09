@@ -2,6 +2,7 @@ package software.mspi;
 
 import java.util.UUID;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,7 +39,9 @@ class SessionRevocationMigrationTests {
                 statement.setObject(2, active);
                 statement.executeUpdate();
             }
-            assertThat(database.commonFlyway().migrate().migrationsExecuted).isEqualTo(1);
+            var revocationMigration = Flyway.configure().configuration(database.commonFlyway().getConfiguration())
+                    .target("13").load();
+            assertThat(revocationMigration.migrate().migrationsExecuted).isEqualTo(1);
             try (var connection = database.admin(); var statement = connection.createStatement()) {
                 try (var rows = statement.executeQuery("SELECT id, version_credencial FROM comun.usuarios")) {
                     while (rows.next()) {
@@ -53,7 +56,7 @@ class SessionRevocationMigrationTests {
                     }
                 }
             }
-            assertThat(database.commonFlyway().migrate().migrationsExecuted).isZero();
+            assertThat(revocationMigration.migrate().migrationsExecuted).isZero();
         }
     }
 }
