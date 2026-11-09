@@ -3,10 +3,12 @@ package software.mspi.evidencias.internal.persistence.tenant;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,32 +33,45 @@ class JpaResponseEvidence implements ResponseEvidence {
     private final ActivityLog audit;
     private final EvidenceSettings settings;
     private final PrivateEvidenceFiles files;
+    private final EvidenceAntimalware antimalware;
 
     @PersistenceContext(unitName = "enterprise")
     private EntityManager entities;
 
     JpaResponseEvidence(TenantUnitOfWork work, CompanyAccess access, EvaluationDrafts evaluations, ActivityLog audit,
-                        EvidenceSettings settings) throws IOException {
+                        EvidenceSettings settings, EvidenceAntimalware antimalware) throws IOException {
         this.work = work;
         this.access = access;
         this.evaluations = evaluations;
         this.audit = audit;
         this.settings = settings;
         this.files = new PrivateEvidenceFiles(settings.directory());
+        this.antimalware = antimalware;
     }
 
     @Override
     public Metadata upload(Target target, long revision, String name, String description, InputStream input) {
-        return evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision,
-                () -> publish(target, name, description, input)).orElseThrow(() -> new EvidenceFailure(STORAGE));
-    }
-
-    private Optional<Metadata> publish(Target target, String name, String description, InputStream input) {
+        // Check authorization and draft revision before scanning; recheck at publication.
+        evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision, Optional::empty);
         Long quota = settings.quotas().get(target.company());
         if (quota == null) throw new EvidenceFailure(QUOTA_NOT_CONFIGURED);
+        try (var lease = antimalware.reserve()) {
+            byte[] bytes = EvidenceContent.read(name, input);
+            var inspection = lease.inspect(bytes);
+            if (!inspection.clean()) throw new EvidenceFailure(MALWARE);
+            var content = EvidenceContent.inspect(name, bytes);
+            return evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision,
+                    () -> publish(target, name, description, content, inspection, quota))
+                    .orElseThrow(() -> new EvidenceFailure(STORAGE));
+        }
+    }
 
-        var content = EvidenceContent.inspect(name, input);
+    private Optional<Metadata> publish(Target target, String name, String description, EvidenceContent content,
+                                      EvidenceAntimalware.Result inspection, long quota) {
         var record = new EvidenceRecord(target, name, description, content);
+        record.inspection = "LIMPIA";
+        record.inspectedAt = inspection.at();
+        record.engine = inspection.engine();
         long remaining = quota - record.size;
         if (remaining < 0 || changeUsage(record.company, record.size, remaining) != 1) {
             throw new EvidenceFailure(QUOTA);
@@ -86,7 +101,7 @@ class JpaResponseEvidence implements ResponseEvidence {
             var rows = entities.createQuery("""
                     select e from EvidenceRecord e
                     where e.company = :company and e.evaluation = :evaluation and e.response = :response
-                        and e.state = 'DISPONIBLE'
+                        and e.state = 'DISPONIBLE' and e.inspection <> 'BLOQUEADA'
                     order by e.created, e.id
                     """, EvidenceRecord.class).setParameter("company", target.company())
                     .setParameter("evaluation", target.evaluation()).setParameter("response", target.response())
@@ -97,27 +112,64 @@ class JpaResponseEvidence implements ResponseEvidence {
 
     @Override
     public Download download(Target target, UUID evidence) {
+        var record = work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
+            evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
+            return available(target, evidence, LockModeType.NONE).orElseThrow(() -> new EvidenceFailure(MISSING));
+        });
+        try (var lease = antimalware.reserve()) {
+            byte[] content = files.read(record);
+            EvidenceAntimalware.Result inspection;
+            try {
+                inspection = lease.inspect(content);
+            } catch (EvidenceFailure unavailable) {
+                recordInspection(target, evidence, null);
+                throw unavailable;
+            }
+            var metadata = recordInspection(target, evidence, inspection);
+            if (!inspection.clean()) throw new EvidenceFailure(MALWARE);
+            return new Download(metadata, content);
+        } catch (IOException failure) {
+            throw new EvidenceFailure(STORAGE);
+        }
+    }
+
+    private Metadata recordInspection(Target target, UUID evidence, EvidenceAntimalware.Result inspection) {
         return work.execute(target.actor(), target.company(), CompanyPermission.READ_EVALUATIONS, () -> {
             evaluations.requireReadableResponse(scope(target), target.evaluation(), target.response());
-            var record = available(target, evidence).orElseThrow(() -> new EvidenceFailure(MISSING));
-            try {
-                return new Download(record.metadata(), files.read(record));
-            } catch (IOException failure) {
-                throw new EvidenceFailure(STORAGE);
+            var record = available(target, evidence, LockModeType.PESSIMISTIC_WRITE)
+                    .orElseThrow(() -> new EvidenceFailure(MISSING));
+            String previous = record.inspection;
+            String next = inspection == null ? "ERROR" : inspection.clean() ? "LIMPIA" : "BLOQUEADA";
+            String engine = inspection == null ? null : inspection.engine();
+            if (!next.equals(previous) || !Objects.equals(engine, record.engine)) {
+                record.inspection = next;
+                record.inspectedAt = inspection == null ? null : inspection.at();
+                record.engine = engine;
+                entities.flush();
+                audit.append(new ActivityLog.Event(record.company, target.actor(), "INSPECCIONAR_EVIDENCIA", "EVIDENCIA",
+                        record.id, previous, next, null, target.correlation()));
             }
+            return record.metadata();
         });
     }
 
     @Override
     public Optional<String> verifiedHash(Target target, UUID evidence) {
         return work.execute(target.actor(), target.company(), CompanyPermission.EDIT_EVALUATION_DRAFT, () ->
-                available(target, evidence).filter(files::isIntact).map(record -> record.digest));
+                available(target, evidence, LockModeType.NONE).flatMap(record -> {
+                    try (var lease = antimalware.reserve()) {
+                        return lease.inspect(files.read(record)).clean() ? Optional.of(record.digest) : Optional.empty();
+                    } catch (IOException failure) {
+                        return Optional.empty();
+                    }
+                }));
     }
 
-    private Optional<EvidenceRecord> available(Target target, UUID evidence) {
-        return Optional.ofNullable(entities.find(EvidenceRecord.class, evidence))
+    private Optional<EvidenceRecord> available(Target target, UUID evidence, LockModeType lock) {
+        return Optional.ofNullable(entities.find(EvidenceRecord.class, evidence, lock))
                 .filter(record -> target.company().equals(record.company) && target.evaluation().equals(record.evaluation)
-                        && target.response().equals(record.response) && "DISPONIBLE".equals(record.state));
+                        && target.response().equals(record.response) && "DISPONIBLE".equals(record.state)
+                        && !"BLOQUEADA".equals(record.inspection));
     }
 
     private int changeUsage(UUID company, int delta, long maximumCurrentUsage) {

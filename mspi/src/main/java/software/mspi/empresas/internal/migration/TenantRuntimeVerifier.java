@@ -126,10 +126,14 @@ public final class TenantRuntimeVerifier {
                         AND NOT has_column_privilege(c.oid, 'modalidad', 'INSERT')
                         AND NOT has_column_privilege(c.oid, 'estado_carga', 'INSERT')
                         AND has_column_privilege(c.oid, 'estado_carga', 'UPDATE')
+                        AND has_column_privilege(c.oid, 'estado_inspeccion', 'INSERT')
+                        AND has_column_privilege(c.oid, 'inspeccionada_en', 'INSERT')
+                        AND has_column_privilege(c.oid, 'motor_firma', 'INSERT')
                         AND NOT EXISTS (
                             SELECT 1 FROM pg_catalog.pg_attribute a
                             WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
-                              AND a.attname <> 'estado_carga' AND has_column_privilege(c.oid, a.attnum, 'UPDATE')
+                              AND (a.attname IN ('estado_carga', 'estado_inspeccion', 'inspeccionada_en', 'motor_firma'))
+                                  IS DISTINCT FROM has_column_privilege(c.oid, a.attnum, 'UPDATE')
                         )
                     WHEN 'uso_evidencias' THEN NOT has_any_column_privilege(c.oid, 'INSERT')
                         AND has_column_privilege(c.oid, 'bytes_ocupados', 'UPDATE')

@@ -63,7 +63,7 @@ final class ApiErrors {
         }
 
         Problem problem = describe(failure);
-        if (problem.status().is5xxServerError() && !List.of("CAPACIDAD_AGOTADA", "BASE_OCUPADA").contains(problem.code())) {
+        if (problem.status().is5xxServerError() && !List.of("CAPACIDAD_AGOTADA", "BASE_OCUPADA", "INSPECCION_EVIDENCIAS_NO_DISPONIBLE").contains(problem.code())) {
             LOG.error("Fallo de API {} correlationId={} exceptionType={}", problem.code(),
                     ApiCorrelationFilter.id(request), failure.getClass().getName());
         }
@@ -90,6 +90,7 @@ final class ApiErrors {
         }
         if (("CAPACIDAD_AGOTADA".equals(problem.code()) || "DEMASIADAS_SOLICITUDES".equals(problem.code()) || "BASE_OCUPADA".equals(problem.code()))
                 && !response.containsHeader("Retry-After")) response.setHeader("Retry-After", "1");
+        if ("INSPECCION_EVIDENCIAS_NO_DISPONIBLE".equals(problem.code())) response.setHeader("Retry-After", "3");
         response.resetBuffer();
         response.setStatus(problem.status().value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
@@ -191,6 +192,10 @@ final class ApiErrors {
                         "La empresa no dispone de cuota para este archivo.");
                 case QUOTA_NOT_CONFIGURED -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "CUOTA_EVIDENCIAS_NO_CONFIGURADA",
                         "La empresa requiere una cuota de evidencias configurada.");
+                case MALWARE -> new Problem(HttpStatus.UNPROCESSABLE_CONTENT, "EVIDENCIA_BLOQUEADA",
+                        "El archivo no supera la inspección de seguridad.");
+                case INSPECTION_UNAVAILABLE -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "INSPECCION_EVIDENCIAS_NO_DISPONIBLE",
+                        "No se pudo verificar la seguridad del archivo. Intente más tarde.");
                 case STORAGE -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ALMACENAMIENTO_EVIDENCIAS_NO_DISPONIBLE",
                         "No se pudo completar la operación con el archivo.");
             };

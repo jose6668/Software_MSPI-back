@@ -57,6 +57,8 @@ import software.mspi.empresas.internal.tenancy.TenantSecretSource;
 import software.mspi.identidad.api.SessionIdentity;
 import tools.jackson.databind.json.JsonMapper;
 
+import software.mspi.support.FakeClamd;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -103,6 +105,7 @@ class CompanyAuthorizationTests {
     @Autowired TenantIsolationFixture fixture;
     @Autowired TestDelivery delivery;
     @Autowired EvidenceVolume evidenceVolume;
+    @Autowired FakeClamd clamd;
 
     @Test
     void listsOnlyOwnOperableCompaniesAndSelectsExplicitMinimalContext() throws Exception {
@@ -134,7 +137,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "7");
+            fixture.metadata(fixture.third, "ACTIVA", "8");
         }
     }
 
@@ -177,13 +180,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "7");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "8");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "7");
+            fixture.metadata(fixture.first, "ACTIVA", "8");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -417,7 +420,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '7' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '8' WHERE id = ?", company);
         return company;
     }
 
@@ -1000,11 +1003,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "7");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "8");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "7");
+            fixture.metadata(fixture.first, "ACTIVA", "8");
         }
     }
 
@@ -1390,6 +1393,74 @@ class CompanyAuthorizationTests {
         var unconfigured = evidenceDraft(c());
         mvc.perform(unconfigured.upload(0, "valido.png", png).with(csrf().asHeader()))
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("CUOTA_EVIDENCIAS_NO_CONFIGURADA"));
+    }
+
+    @Test
+    void blockedOrUnscannedUploadsNeverPublishOrConsumeQuota() throws Exception {
+        var draft = evidenceDraft(a());
+        String schema = fixture.first.scope().schema();
+        long used = count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias");
+        long before = fileEntries(evidenceVolume.root.resolve(a().toString()));
+        byte[] png = image("png");
+        try {
+            clamd.verdict = bytes -> "stream: MSPI-Test FOUND";
+            mvc.perform(draft.upload(0, "archivo.png", png).with(csrf().asHeader()))
+                    .andExpect(status().is(422)).andExpect(jsonPath("$.code").value("EVIDENCIA_BLOQUEADA"))
+                    .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain("MSPI-Test"));
+            clamd.verdict = bytes -> null;
+            mvc.perform(draft.upload(0, "archivo.png", png).with(csrf().asHeader()))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("INSPECCION_EVIDENCIAS_NO_DISPONIBLE"));
+            assertThat(count("SELECT count(*) FROM " + schema + ".evidencias WHERE respuesta_id = ?", draft.response())).isZero();
+            assertThat(count("SELECT bytes_ocupados FROM " + schema + ".uso_evidencias")).isEqualTo(used);
+            assertThat(fileEntries(evidenceVolume.root.resolve(a().toString()))).isEqualTo(before);
+        } finally {
+            clamd.verdict = bytes -> "stream: OK";
+        }
+        mvc.perform(draft.upload(0, "archivo.png", png).with(csrf().asHeader()))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.evidencia.estadoInspeccion").value("LIMPIA"))
+                .andExpect(jsonPath("$.revisionEvaluacion").value(1));
+    }
+
+    @Test
+    void legacyEvidenceRequiresInspectionAndQuarantineSurvivesScannerRecovery() throws Exception {
+        var draft = evidenceDraft(a());
+        byte[] png = image("png");
+        var published = mvc.perform(draft.upload(0, "legado.png", png).with(csrf().asHeader()))
+                .andExpect(status().isCreated()).andReturn();
+        UUID id = UUID.fromString(mapper.readTree(published.getResponse().getContentAsByteArray()).path("evidencia").path("evidenciaId").asString());
+        String schema = fixture.first.scope().schema();
+        // Represent a file migrated from V7: original bytes remain private and uninspected.
+        sql("UPDATE " + schema + ".evidencias SET estado_inspeccion = 'PENDIENTE', motor_firma = NULL,"
+                + " inspeccionada_en = NULL WHERE id = ?", id);
+        sql("UPDATE " + schema + ".evaluaciones SET estado = 'EN_REVISION' WHERE id = ?", draft.evaluation());
+        var download = get(EVIDENCE_FILE, a(), draft.evaluation(), draft.response(), id).session(draft.session());
+        var list = get(EVALUATION_EVIDENCE, a(), draft.evaluation(), draft.response()).session(draft.session());
+        mvc.perform(list).andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].estadoInspeccion").value("PENDIENTE"));
+        try {
+            clamd.verdict = bytes -> "stream: insufficient scan ERROR";
+            mvc.perform(download).andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value("INSPECCION_EVIDENCIAS_NO_DISPONIBLE"));
+            mvc.perform(list).andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].estadoInspeccion").value("ERROR"));
+            clamd.verdict = bytes -> "stream: OK";
+            mvc.perform(download).andExpect(status().isOk()).andExpect(content().bytes(png));
+            clamd.verdict = bytes -> "stream: MSPI-Test FOUND";
+            mvc.perform(download).andExpect(status().is(422)).andExpect(jsonPath("$.code").value("EVIDENCIA_BLOQUEADA"));
+        } finally {
+            clamd.verdict = bytes -> "stream: OK";
+        }
+        int scans = clamd.scans.get();
+        mvc.perform(download).andExpect(status().isNotFound());
+        mvc.perform(list).andExpect(status().isOk()).andExpect(jsonPath("$.elementos").isEmpty());
+        assertThat(clamd.scans.get()).isEqualTo(scans);
+        assertThat(count("SELECT count(*) FROM " + schema + ".eventos_actividad WHERE objeto_id = ?"
+                + " AND accion = 'INSPECCIONAR_EVIDENCIA' AND estado_nuevo = 'BLOQUEADA'", id)).isOne();
+        assertThat(count("SELECT revision FROM " + schema + ".evaluaciones WHERE id = ?", draft.evaluation())).isOne();
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE evidencias SET estado_inspeccion = 'LIMPIA' WHERE id = '"
+                    + id + "'"), "23514");
+        }
     }
 
     @Test
@@ -1856,9 +1927,12 @@ class CompanyAuthorizationTests {
         @Bean @Primary TenantSecretSource probeSecrets(TenantIsolationFixture data) { return data.secrets(); }
         @Bean TestDelivery testDelivery() { return new TestDelivery(); }
         @Bean EvidenceVolume evidenceVolume() throws IOException { return new EvidenceVolume(); }
-        @Bean DynamicPropertyRegistrar evidenceProperties(TenantIsolationFixture data, EvidenceVolume volume) {
+        @Bean FakeClamd clamd() throws IOException { return new FakeClamd(); }
+        @Bean DynamicPropertyRegistrar evidenceProperties(TenantIsolationFixture data, EvidenceVolume volume, FakeClamd clamd) {
             return registry -> {
                 registry.add("mspi.evidence.directory", () -> volume.root.toString());
+                registry.add("mspi.evidence.antimalware.host", () -> "127.0.0.1");
+                registry.add("mspi.evidence.antimalware.port", clamd::port);
                 registry.add("mspi.evidence.quotas[" + data.first.scope().companyId() + "]", () -> EvidenceVolume.QUOTA);
                 registry.add("mspi.evidence.quotas[" + data.second.scope().companyId() + "]", () -> EvidenceVolume.QUOTA);
             };

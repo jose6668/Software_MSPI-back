@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.14.0'
+  version: '1.15.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1151,8 +1151,8 @@ paths:
       - $ref: '#/components/parameters/EvaluationResponseId'
     get:
       operationId: listarEvidenciasRespuesta
-      summary: Lista las evidencias disponibles de una respuesta
-      description: Requiere AE, GS o AU con acceso a la evaluación. El servicio de evidencias debe estar habilitado.
+      summary: Lista los metadatos de evidencias de una respuesta
+      description: Requiere AE, GS o AU con acceso a la evaluación. Omite la cuarentena; el listado no autoriza la descarga.
       security:
         - sessionCookie: []
       parameters:
@@ -1160,7 +1160,7 @@ paths:
         - $ref: '#/components/parameters/CompanyPageSize'
       responses:
         '200':
-          description: Metadatos de las evidencias disponibles, sin rutas físicas
+          description: Metadatos con estado de inspección, sin rutas físicas
           headers:
             X-Correlation-Id:
               $ref: '#/components/headers/CorrelationId'
@@ -1173,7 +1173,7 @@ paths:
     post:
       operationId: cargarEvidenciaRespuesta
       summary: Adjunta un archivo privado a una respuesta en borrador
-      description: Requiere AE o GS, CSRF, revisión vigente y cuota configurada. La carga exitosa incrementa la revisión de la evaluación.
+      description: Requiere AE o GS, CSRF, revisión vigente y cuota configurada. Publica tras inspección antimalware y validación de formato; la carga exitosa incrementa la revisión de la evaluación.
       security:
         - sessionCookie: []
       parameters:
@@ -1207,6 +1207,10 @@ paths:
                 $ref: '#/components/schemas/ResponseEvidenceUpload'
         '413':
           $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem' # EVIDENCIA_BLOQUEADA
+        '503':
+          $ref: '#/components/responses/Problem' # INSPECCION_EVIDENCIAS_NO_DISPONIBLE u otro recurso no disponible
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/evaluaciones/{evaluacionId}/respuestas/{respuestaId}/evidencias/{evidenciaId}/archivo:
@@ -1218,7 +1222,7 @@ paths:
     get:
       operationId: descargarEvidenciaRespuesta
       summary: Descarga el archivo privado de una evidencia
-      description: Requiere AE, GS o AU con autorización vigente sobre la empresa y el objeto.
+      description: Requiere autorización vigente, huella íntegra y un veredicto limpio del motor actualizado para esa descarga.
       security:
         - sessionCookie: []
       responses:
@@ -1238,6 +1242,10 @@ paths:
               schema: {type: string, format: binary}
             image/jpeg:
               schema: {type: string, format: binary}
+        '422':
+          $ref: '#/components/responses/Problem' # EVIDENCIA_BLOQUEADA
+        '503':
+          $ref: '#/components/responses/Problem' # INSPECCION_EVIDENCIAS_NO_DISPONIBLE u otro recurso no disponible
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
@@ -2296,7 +2304,7 @@ components:
     ResponseEvidence:
       type: object
       additionalProperties: false
-      required: [evidenciaId, nombreOriginal, tipoDetectado, tamanoBytes, descripcion, creadaPor, creadaEn]
+      required: [evidenciaId, nombreOriginal, tipoDetectado, tamanoBytes, descripcion, creadaPor, creadaEn, estadoInspeccion]
       properties:
         evidenciaId: {type: string, format: uuid}
         nombreOriginal: {type: string, maxLength: 255}
@@ -2305,6 +2313,10 @@ components:
         descripcion: {type: [string, 'null'], maxLength: 1000}
         creadaPor: {type: string, format: uuid}
         creadaEn: {type: string, format: date-time}
+        estadoInspeccion:
+          type: string
+          enum: [PENDIENTE, LIMPIA, ERROR]
+          description: Último estado registrado; la descarga siempre realiza una inspección nueva.
     ResponseEvidenceUpload:
       type: object
       additionalProperties: false

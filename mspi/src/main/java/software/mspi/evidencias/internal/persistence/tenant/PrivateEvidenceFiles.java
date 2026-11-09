@@ -8,7 +8,6 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
-import java.util.HexFormat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,22 +72,6 @@ final class PrivateEvidenceFiles {
                 throw new IOException("El contenido privado no coincide con los metadatos.");
             }
             return bytes;
-        }
-    }
-
-    boolean isIntact(EvidenceRecord metadata) {
-        try (var stream = open(metadata)) {
-            var digest = EvidenceContent.newSha256();
-            byte[] buffer = new byte[8192];
-            int total = 0;
-            for (int length; (length = stream.read(buffer)) != -1;) {
-                total += length;
-                if (total > metadata.size) return false;
-                digest.update(buffer, 0, length);
-            }
-            return total == metadata.size && metadata.digest.equals(HexFormat.of().formatHex(digest.digest()));
-        } catch (IOException failure) {
-            return false;
         }
     }
 

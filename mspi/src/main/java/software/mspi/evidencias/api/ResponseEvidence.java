@@ -15,7 +15,7 @@ public interface ResponseEvidence {
     record Target(UUID actor, UUID company, UUID evaluation, UUID response, UUID correlation) {}
 
     record Metadata(UUID evidenciaId, String nombreOriginal, String tipoDetectado, int tamanoBytes,
-                    String descripcion, UUID creadaPor, Instant creadaEn) {}
+                    String descripcion, UUID creadaPor, Instant creadaEn, String estadoInspeccion) {}
 
     record Page(List<Metadata> elementos, int pagina, int tamano, boolean hayMas) {}
     record Download(Metadata metadata, byte[] content) {}
