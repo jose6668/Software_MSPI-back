@@ -16,7 +16,7 @@ class SqlBudgetErrorTests {
         var request = new MockHttpServletRequest("GET", "/api/v1/test");
         var response = new MockHttpServletResponse();
         new ApiCorrelationFilter().doFilter(request, response, (req,res) -> {
-            new ApiErrors(JsonMapper.builder().build()).resolve(request, response, null,
+            new ApiErrors(JsonMapper.builder().build(), (type, correlation) -> {}).resolve(request, response, null,
                     new IllegalStateException("outer", new SQLException("private SQL and credentials", state)));
         });
         assertThat(response.getStatus()).isEqualTo(503);
@@ -27,7 +27,7 @@ class SqlBudgetErrorTests {
         var request = new MockHttpServletRequest("GET", "/api/v1/test");
         var response = new MockHttpServletResponse();
         new ApiCorrelationFilter().doFilter(request, response, (req,res) -> {
-            new ApiErrors(JsonMapper.builder().build()).resolve(request, response, null, new SQLException("test"));
+            new ApiErrors(JsonMapper.builder().build(), (type, correlation) -> {}).resolve(request, response, null, new SQLException("test"));
         });
         assertThat(response.getStatus()).isEqualTo(500);
     }
@@ -35,7 +35,7 @@ class SqlBudgetErrorTests {
         var request = new MockHttpServletRequest("GET", "/api/v1/test");
         var response = new MockHttpServletResponse();
         new ApiCorrelationFilter().doFilter(request, response, (req,res) -> {
-            new ApiErrors(JsonMapper.builder().build()).resolve(request, response, null, new SQLTransientConnectionException("pool full"));
+            new ApiErrors(JsonMapper.builder().build(), (type, correlation) -> {}).resolve(request, response, null, new SQLTransientConnectionException("pool full"));
         });
         assertThat(response.getStatus()).isEqualTo(503);
     }
