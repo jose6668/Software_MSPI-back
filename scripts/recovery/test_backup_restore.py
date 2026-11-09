@@ -55,20 +55,25 @@ class RestoreSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "huellas de las evidencias"):
             recovery.read_bundle(self.root)
 
-    def test_control_inventory_preserves_v8_manifests_and_verifies_v9(self):
+    def test_risk_inventory_preserves_v8_and_v9_manifests_and_verifies_v10(self):
         company = "00000000-0000-4000-8000-000000000001"
         schema = "emp_" + company.replace("-", "")
         evidence = {"evaluaciones": 2, "cuota_ocupada": 0, "evidencias": []}
         controls = {"implementaciones": 1, "versiones": 2, "aplicaciones": 1, "verificaciones": 1}
-        for version in ("8", "9"):
+        risks = {"registros": 1, "inherentes": 2, "vinculos": 1}
+        for version in ("8", "9", "10"):
             registry = {"empresas": [[company, schema, "ACTIVA", version]]}
             queries = [registry, True, dict(evidence)]
-            if version == "9":
+            if version in ("9", "10"):
                 queries.append(controls)
+            if version == "10":
+                queries.append(risks)
             with patch.object(recovery, "sql", side_effect=queries) as sql:
                 inventory = recovery.inventory("postgres")
                 expected = dict(evidence)
-                if version == "9":
+                if version in ("9", "10"):
                     expected["controles"] = controls
-                    self.assertIn("verificaciones_control", sql.call_args.args[1])
+                if version == "10":
+                    expected["riesgos"] = risks
+                    self.assertIn("valoraciones_inherentes", sql.call_args.args[1])
                 self.assertEqual({company: expected}, inventory["companies"])

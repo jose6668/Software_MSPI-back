@@ -1,9 +1,7 @@
 package software.mspi.activos.internal.persistence.tenant;
 
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -16,6 +14,7 @@ import software.mspi.activos.api.AssetInventory.Asset;
 import software.mspi.activos.api.AssetInventory.Input;
 import software.mspi.activos.api.AssetInventory.References;
 import software.mspi.activos.api.AssetInventory.Type;
+import software.mspi.activos.api.BusinessCode;
 
 @Entity
 @Table(name = "activos")
@@ -40,7 +39,7 @@ class AssetRecord extends CatalogRecord {
     }
 
     static String normalizedCode(String code) {
-        return Normalizer.normalize(code.strip().toUpperCase(Locale.ROOT), Normalizer.Form.NFC);
+        return BusinessCode.normalize(code);
     }
 
     References references() {

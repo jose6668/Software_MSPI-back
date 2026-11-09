@@ -1,6 +1,6 @@
 # Respaldo y restauración en Docker
 
-El inventario admite empresas V8 y V9. En V9 coteja también los recuentos de implementaciones, versiones, confirmaciones de aplicación y verificaciones. Las evidencias de control se cotejan por tamaño y SHA-256 en el mismo volumen privado que las evidencias de evaluación.
+El inventario admite empresas V8, V9 y V10. Desde V9 coteja también los recuentos de implementaciones, versiones, confirmaciones de aplicación y verificaciones. En V10 añade riesgos, valoraciones inherentes y vínculos. Las evidencias de control se cotejan por tamaño y SHA-256 en el mismo volumen privado que las evidencias de evaluación.
 
 La herramienta `scripts/recovery/backup_restore.py` requiere Python 3.12 o posterior y acceso de operador a Docker. Trabaja con el despliegue de recursos y la extensión de evidencias, PostgreSQL de la imagen fijada en Compose y los esquemas empresariales V8. El destino usa la misma variante de la imagen y un volumen nuevo. Esto es una copia física del clúster completo.
 

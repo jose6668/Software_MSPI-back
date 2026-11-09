@@ -92,6 +92,10 @@ class CompanyAuthorizationTests {
     private static final String CATALOGS = "/api/v1/empresas/{empresaId}/catalogos";
     private static final String METHODOLOGIES = "/api/v1/empresas/{empresaId}/metodologias";
     private static final String EVALUATIONS = "/api/v1/empresas/{empresaId}/evaluaciones";
+    private static final String RISKS = "/api/v1/empresas/{empresaId}/riesgos";
+    private static final String RISK = RISKS + "/{riesgoId}";
+    private static final String INHERENT = RISK + "/valoraciones-inherentes";
+    private static final String RISK_LINKS = RISK + "/implementaciones-control";
     private static final String CONTROL_IMPLEMENTATIONS = "/api/v1/empresas/{empresaId}/implementaciones-control";
     private static final String CONTROL_IMPLEMENTATION = CONTROL_IMPLEMENTATIONS + "/{implementacionId}";
     private static final String CONTROL_VERSION = CONTROL_IMPLEMENTATION + "/versiones/{versionId}";
@@ -141,7 +145,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "9");
+            fixture.metadata(fixture.third, "ACTIVA", "10");
         }
     }
 
@@ -184,13 +188,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "9");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "10");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "9");
+            fixture.metadata(fixture.first, "ACTIVA", "10");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -424,7 +428,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '9' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '10' WHERE id = ?", company);
         return company;
     }
 
@@ -1007,11 +1011,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "9");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "10");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "9");
+            fixture.metadata(fixture.first, "ACTIVA", "10");
         }
     }
 
@@ -1887,6 +1891,148 @@ class CompanyAuthorizationTests {
         return Map.of("revisionEsperada", revision, "prueba", "Se revisan los criterios",
                 "fundamento", "Acta de prueba de control", "criteriosEvaluados", total, "criteriosCumplidos", met,
                 "proximaRevision", due, "evidenciaId", evidence);
+    }
+
+    @Test
+    void registersAndRevaluesInherentRiskWithPublishedMatrixAndImmutableHistory() throws Exception {
+        var editor = account();
+        member(editor, a(), "GS");
+        member(editor, b(), "GS");
+        var session = login(editor, "192.0.2.20");
+        var auditor = account();
+        member(auditor, a(), "AU");
+        var reader = login(auditor, "192.0.2.20");
+        var limited = account();
+        member(limited, a(), "RA");
+        var ra = login(limited, "192.0.2.20");
+        var refs = assetReferences(a(), session);
+        UUID asset = classifiedAsset(a(), session, "RIESGO-ACTIVO-A", refs);
+        UUID foreign = classifiedAsset(b(), session, "RIESGO-ACTIVO-B", assetReferences(b(), session));
+        UUID archived = classifiedAsset(a(), session, "RIESGO-ACTIVO-RETIRADO", refs);
+        catalogPost(ASSETS + "/{id}/archivar", a(), session,
+                Map.of("revisionEsperada", 0, "motivo", "Retiro de prueba"), archived).andExpect(status().isOk());
+        var details = riskDetails(asset, refs.get("propietarioId"), "Falla del servicio");
+        for (UUID invalid : List.of(foreign, archived)) {
+            catalogPost(RISKS, a(), session, Map.of("codigo", "R-1",
+                    "detalle", riskDetails(invalid, refs.get("propietarioId"), "Falla del servicio")))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ACTIVO_PRINCIPAL_NO_DISPONIBLE"));
+        }
+        var created = catalogPost(RISKS, a(), session, Map.of("codigo", " Ré-1 ", "detalle", details))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("IDENTIFICADO"))
+                .andExpect(jsonPath("$.nivelInherente").isEmpty()).andReturn();
+        UUID risk = id(created, "riesgoId");
+        catalogPost(RISKS, a(), session, Map.of("codigo", "ré-1", "detalle", details))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CODIGO_RIESGO_DUPLICADO"));
+        mvc.perform(get(RISKS, a()).session(reader).param("codigo", " RÉ-1 "))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos[0].riesgoId").value(risk.toString()));
+        mvc.perform(get(RISKS, a()).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(RISK, b(), risk).session(session)).andExpect(status().isNotFound());
+        catalogPost(RISK + "/iniciar-analisis", a(), reader, Map.of("revisionEsperada", 0), risk).andExpect(status().isForbidden());
+        mvc.perform(post(RISK + "/iniciar-analisis", a(), risk).session(session).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"revisionEsperada\":0}")).andExpect(status().isForbidden());
+        catalogPost(RISK + "/iniciar-analisis", a(), session, Map.of("revisionEsperada", 0), risk)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("EN_ANALISIS"));
+        UUID valuation = id(catalogPost(INHERENT, a(), session, Map.of("revisionEsperada", 1, "entradas", Map.of()), risk)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.nivel").isEmpty()).andReturn(), "valoracionId");
+        catalogPost(INHERENT, a(), session, Map.of("revisionEsperada", 2, "entradas", Map.of()), risk)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BORRADOR_INHERENTE_EXISTENTE"));
+        catalogPost(INHERENT + "/{valoracionId}/confirmar", a(), session, Map.of("revisionEsperada", 2), risk, valuation)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VALORACION_INHERENTE_INCOMPLETA"));
+        editRiskInputs(a(), session, risk, valuation, 2, riskInputs("MUY_BAJA", "CATASTROFICO")).andExpect(status().isOk());
+        catalogPost(INHERENT + "/{valoracionId}/confirmar", a(), session, Map.of("revisionEsperada", 3), risk, valuation)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nivel").value("EXTREMO"))
+                .andExpect(jsonPath("$.probabilidadIndice").value(0.20))
+                .andExpect(jsonPath("$.base.amenaza").value("Falla del servicio"));
+        editRiskInputs(a(), session, risk, valuation, 4, riskInputs("BAJA", "LEVE")).andExpect(status().isConflict());
+        var changed = riskDetails(asset, refs.get("propietarioId"), "Nueva exposición");
+        mvc.perform(put(RISK, a(), risk).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", 4, "detalle", changed, "motivo", "Cambió el alcance"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.requiereRevision").value(true));
+        UUID next = id(catalogPost(INHERENT, a(), session, Map.of("revisionEsperada", 5, "motivoReevaluacion", "Nueva exposición",
+                        "entradas", riskInputs("BAJA", "LEVE")), risk)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.valoracionAnteriorId").value(valuation.toString()))
+                .andReturn(), "valoracionId");
+        catalogPost(INHERENT + "/{valoracionId}/confirmar", a(), session, Map.of("revisionEsperada", 6), risk, next)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nivel").value("BAJO"));
+        mvc.perform(get(INHERENT, a(), risk).session(reader)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[1].base.amenaza").value("Falla del servicio"))
+                .andExpect(jsonPath("$.elementos[1].nivel").value("EXTREMO"));
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE valoraciones_inherentes SET nivel = 'BAJO' WHERE id = '"
+                    + valuation + "'"), "23514");
+        }
+    }
+
+    @Test
+    void publishesAllMatrixCellsAndLinksOneImplementationOnlyToLocalRisks() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        member(editor, b(), "AE");
+        var session = login(editor, "192.0.2.20");
+        UUID methodId = method(a(), session, "RIESGO_CATEGORICO");
+        var published = mvc.perform(get(METHODOLOGIES + "/{versionId}", a(), methodId).session(session))
+                .andExpect(status().isOk()).andReturn();
+        var matrix = mapper.readTree(published.getResponse().getContentAsByteArray()).path("reglas").path("matriz");
+        String[] probability = {"MUY_BAJA", "BAJA", "MEDIA", "ALTA", "MUY_ALTA"};
+        String[] impact = {"LEVE", "MENOR", "MODERADO", "MAYOR", "CATASTROFICO"};
+        String[][] expected = {
+            {"BAJO", "BAJO", "MODERADO", "ALTO", "EXTREMO"},
+            {"BAJO", "MODERADO", "MODERADO", "ALTO", "EXTREMO"},
+            {"MODERADO", "MODERADO", "MODERADO", "ALTO", "EXTREMO"},
+            {"MODERADO", "MODERADO", "ALTO", "ALTO", "EXTREMO"},
+            {"ALTO", "ALTO", "ALTO", "ALTO", "EXTREMO"}
+        };
+        for (int row = 0; row < probability.length; row++) {
+            for (int col = 0; col < impact.length; col++) {
+                assertThat(matrix.path(probability[row]).path(impact[col]).asString()).isEqualTo(expected[row][col]);
+            }
+        }
+
+        var refs = assetReferences(a(), session);
+        var foreignRefs = assetReferences(b(), session);
+        UUID asset = classifiedAsset(a(), session, "RIESGO-CONTROL-A", refs);
+        UUID foreignAsset = classifiedAsset(b(), session, "RIESGO-CONTROL-B", foreignRefs);
+        UUID edition = evaluationCatalog(new EvaluationItem("RC", "CONTROL", "DOM"));
+        UUID control = id(catalogPost(CONTROL_IMPLEMENTATIONS, a(), session, Map.of("versionCatalogoId", edition,
+                "elementoId", catalogElement(a(), session, edition, "RC"), "detalle", controlDetail(a(), session)))
+                .andExpect(status().isCreated()).andReturn(), "implementacionId");
+        var link = Map.of("revisionEsperada", 0, "implementacionId", control, "efectoEsperado", "PROBABILIDAD",
+                "justificacion", "Atiende una causa del evento");
+        for (String code : List.of("RC-1", "RC-2")) {
+            UUID risk = id(catalogPost(RISKS, a(), session, Map.of("codigo", code, "detalle",
+                    riskDetails(asset, refs.get("propietarioId"), "Amenaza de prueba")))
+                    .andExpect(status().isCreated()).andReturn(), "riesgoId");
+            catalogPost(RISK_LINKS, a(), session, link, risk).andExpect(status().isCreated());
+            var duplicate = new HashMap<String, Object>(link);
+            duplicate.put("revisionEsperada", 1);
+            catalogPost(RISK_LINKS, a(), session, duplicate, risk).andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("VINCULO_RIESGO_DUPLICADO"));
+            mvc.perform(get(RISK, a(), risk).session(session)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.nivelInherente").isEmpty());
+        }
+        UUID other = id(catalogPost(RISKS, b(), session, Map.of("codigo", "RC-1", "detalle",
+                riskDetails(foreignAsset, foreignRefs.get("propietarioId"), "Amenaza en otra empresa")))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+        catalogPost(RISK_LINKS, b(), session, link, other).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IMPLEMENTACION_NO_DISPONIBLE"));
+    }
+
+    private static Map<String, Object> riskDetails(UUID asset, UUID responsible, String threat) {
+        return Map.of("activoPrincipalId", asset, "amenaza", threat, "vulnerabilidad", "Dependencia única",
+                "descripcion", "Interrupción de operación", "responsableId", responsible, "tratamientoPropuesto", "ACEPTAR");
+    }
+
+    private static Map<String, String> riskInputs(String probability, String impact) {
+        return Map.of("probabilidad", probability, "impacto", impact, "periodoReferencia", "Ejercicio de prueba",
+                "fundamento", "Escenario documentado", "supuestos", "Una sola sede", "fuente", "Registro ficticio");
+    }
+
+    private ResultActions editRiskInputs(UUID company, MockHttpSession session, UUID risk, UUID valuation,
+                                       long revision, Map<String, String> inputs) throws Exception {
+        return mvc.perform(put(INHERENT + "/{valoracionId}", company, risk, valuation).session(session).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", revision, "entradas", inputs))));
     }
 
     private UUID f1Catalog() throws SQLException {
