@@ -14,6 +14,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import software.mspi.auditoria.api.ActivityLog;
+import software.mspi.auditoria.api.SecurityIncidents;
 import software.mspi.empresas.api.CompanyAccess;
 import software.mspi.empresas.api.CompanyPermission;
 import software.mspi.empresas.api.TenantUnitOfWork;
@@ -34,12 +35,14 @@ class JpaResponseEvidence implements ResponseEvidence {
     private final EvidenceSettings settings;
     private final PrivateEvidenceFiles files;
     private final EvidenceAntimalware antimalware;
+    private final SecurityIncidents incidents;
 
     @PersistenceContext(unitName = "enterprise")
     private EntityManager entities;
 
     JpaResponseEvidence(TenantUnitOfWork work, CompanyAccess access, EvaluationDrafts evaluations, ActivityLog audit,
-                        EvidenceSettings settings, EvidenceAntimalware antimalware) throws IOException {
+                        EvidenceSettings settings, EvidenceAntimalware antimalware, SecurityIncidents incidents)
+            throws IOException {
         this.work = work;
         this.access = access;
         this.evaluations = evaluations;
@@ -47,6 +50,7 @@ class JpaResponseEvidence implements ResponseEvidence {
         this.settings = settings;
         this.files = new PrivateEvidenceFiles(settings.directory());
         this.antimalware = antimalware;
+        this.incidents = incidents;
     }
 
     @Override
@@ -58,7 +62,7 @@ class JpaResponseEvidence implements ResponseEvidence {
         try (var lease = antimalware.reserve()) {
             byte[] bytes = EvidenceContent.read(name, input);
             var inspection = lease.inspect(bytes);
-            if (!inspection.clean()) throw new EvidenceFailure(MALWARE);
+            if (!clean(target, inspection)) throw new EvidenceFailure(MALWARE);
             var content = EvidenceContent.inspect(name, bytes);
             return evaluations.attachEvidence(scope(target), target.evaluation(), target.response(), revision,
                     () -> publish(target, name, description, content, inspection, quota))
@@ -125,8 +129,9 @@ class JpaResponseEvidence implements ResponseEvidence {
                 recordInspection(target, evidence, null);
                 throw unavailable;
             }
+            boolean clean = clean(target, inspection);
             var metadata = recordInspection(target, evidence, inspection);
-            if (!inspection.clean()) throw new EvidenceFailure(MALWARE);
+            if (!clean) throw new EvidenceFailure(MALWARE);
             return new Download(metadata, content);
         } catch (IOException failure) {
             throw new EvidenceFailure(STORAGE);
@@ -158,11 +163,17 @@ class JpaResponseEvidence implements ResponseEvidence {
         return work.execute(target.actor(), target.company(), CompanyPermission.EDIT_EVALUATION_DRAFT, () ->
                 available(target, evidence, LockModeType.NONE).flatMap(record -> {
                     try (var lease = antimalware.reserve()) {
-                        return lease.inspect(files.read(record)).clean() ? Optional.of(record.digest) : Optional.empty();
+                        return clean(target, lease.inspect(files.read(record))) ? Optional.of(record.digest) : Optional.empty();
                     } catch (IOException failure) {
                         return Optional.empty();
                     }
                 }));
+    }
+
+    private boolean clean(Target target, EvidenceAntimalware.Result inspection) {
+        if (inspection.clean()) return true;
+        incidents.record(SecurityIncidents.Type.AMENAZA_EVIDENCIA, target.correlation());
+        return false;
     }
 
     private Optional<EvidenceRecord> available(Target target, UUID evidence, LockModeType lock) {

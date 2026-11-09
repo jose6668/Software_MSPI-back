@@ -32,6 +32,8 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.activos.api.CatalogFailure;
 import software.mspi.activos.api.ClassificationFailure;
+import software.mspi.auditoria.api.SecurityIncidents;
+import software.mspi.auditoria.api.SecurityIncidents.Type;
 import software.mspi.catalogos.api.ReferenceNotFound;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
@@ -52,9 +54,11 @@ final class ApiErrors {
             Pattern.compile("[a-zA-Z_][a-zA-Z0-9_]*(?:\\[[0-9]+\\]|\\.[a-zA-Z_][a-zA-Z0-9_]*)*");
 
     private final JsonMapper mapper;
+    private final SecurityIncidents incidents;
 
-    ApiErrors(JsonMapper mapper) {
+    ApiErrors(JsonMapper mapper, SecurityIncidents incidents) {
         this.mapper = mapper;
+        this.incidents = incidents;
     }
 
     ModelAndView resolve(HttpServletRequest request, HttpServletResponse response, Object handler, Exception failure) {
@@ -88,6 +92,8 @@ final class ApiErrors {
         if (id == null) {
             id = UUID.randomUUID();
         }
+        var incident = incident(problem);
+        if (incident != null) incidents.record(incident, id);
         if (("CAPACIDAD_AGOTADA".equals(problem.code()) || "DEMASIADAS_SOLICITUDES".equals(problem.code()) || "BASE_OCUPADA".equals(problem.code()))
                 && !response.containsHeader("Retry-After")) response.setHeader("Retry-After", "1");
         if ("INSPECCION_EVIDENCIAS_NO_DISPONIBLE".equals(problem.code())) response.setHeader("Retry-After", "3");
@@ -100,6 +106,20 @@ final class ApiErrors {
             mapper.writeValue(response.getOutputStream(), new Body("about:blank", problem.status().getReasonPhrase(),
                     problem.status().value(), problem.detail(), "urn:uuid:" + id, problem.code(), id, problem.fields()));
         }
+    }
+
+    private static Type incident(Problem problem) {
+        return switch (problem.code()) {
+            case "CREDENCIALES_INVALIDAS" -> Type.LOGIN_FALLIDO;
+            case "NO_AUTENTICADO" -> Type.SIN_SESION;
+            case "CSRF_INVALIDO" -> Type.CSRF_INVALIDO;
+            case "DEMASIADOS_INTENTOS" -> Type.INTENTOS_LIMITADOS;
+            case "DEMASIADAS_SOLICITUDES", "CUOTA_EVIDENCIAS_AGOTADA" -> Type.CUOTA_EXCEDIDA;
+            case "CAPACIDAD_AGOTADA", "BASE_OCUPADA" -> Type.CAPACIDAD_AGOTADA;
+            case "CARGA_DEMASIADO_GRANDE" -> Type.CARGA_RECHAZADA;
+            case "INSPECCION_EVIDENCIAS_NO_DISPONIBLE" -> Type.INSPECCION_NO_DISPONIBLE;
+            default -> problem.status() == HttpStatus.FORBIDDEN ? Type.ACCESO_DENEGADO : null;
+        };
     }
 
     private static Problem describe(Exception failure) {
