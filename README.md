@@ -87,3 +87,5 @@ La persistencia común y la empresarial usan unidades JPA distintas. Cada unidad
 La unidad JPA empresarial está deshabilitada por defecto. Activarla exige límites explícitos, secretos externos y autorización por operación. Las consultas del selector usan el registro común. [Aislamiento JPA](docs/AISLAMIENTO-JPA.md) y [permisos por empresa](docs/PERMISOS-EMPRESA.md).
 
 HU-SEG-008 incorpora [inspección antimalware y cuarentena de evidencias](docs/INSPECCION-EVIDENCIAS.md). El módulo requiere un motor privado con firmas vigentes y las empresas deben actualizarse a V8 antes de usar esta versión.
+
+HU-029 incorpora el [respaldo y la restauración integral en Docker](docs/RESPALDO-Y-RESTAURACION.md), con verificación de evidencias y un destino separado.
