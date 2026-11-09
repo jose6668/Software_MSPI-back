@@ -41,6 +41,7 @@ import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
 import software.mspi.evaluaciones.api.EvaluationBlocked;
 import software.mspi.evaluaciones.api.EvaluationFailure;
+import software.mspi.riesgos.api.RiskFailure;
 import software.mspi.evidencias.api.EvidenceFailure;
 import software.mspi.identidad.api.LoginLimitException;
 import software.mspi.identidad.api.RecoveryFailure;
@@ -219,6 +220,34 @@ final class ApiErrors {
                         "No se pudo verificar la seguridad del archivo. Intente más tarde.");
                 case STORAGE -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ALMACENAMIENTO_EVIDENCIAS_NO_DISPONIBLE",
                         "No se pudo completar la operación con el archivo.");
+            };
+        }
+        if (failure instanceof RiskFailure risk) {
+            return switch (risk.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_RIESGO_INCOMPATIBLE",
+                        "El estado vigente no admite esta operación.");
+                case CODE -> new Problem(HttpStatus.CONFLICT, "CODIGO_RIESGO_DUPLICADO",
+                        "El código ya pertenece a un riesgo de la empresa.");
+                case ASSET -> new Problem(HttpStatus.CONFLICT, "ACTIVO_PRINCIPAL_NO_DISPONIBLE",
+                        "Seleccione un activo principal activo de la empresa.");
+                case RESPONSIBLE -> new Problem(HttpStatus.CONFLICT, "RESPONSABLE_NO_DISPONIBLE",
+                        "Seleccione un responsable de negocio activo de la empresa.");
+                case IMPLEMENTATION -> new Problem(HttpStatus.CONFLICT, "IMPLEMENTACION_NO_DISPONIBLE",
+                        "Seleccione una implementación de la empresa.");
+                case DUPLICATE_LINK -> new Problem(HttpStatus.CONFLICT, "VINCULO_RIESGO_DUPLICADO",
+                        "La implementación ya está vinculada a este riesgo.");
+                case DRAFT_EXISTS -> new Problem(HttpStatus.CONFLICT, "BORRADOR_INHERENTE_EXISTENTE",
+                        "El riesgo ya tiene una valoración inherente pendiente.");
+                case INCOMPLETE -> new Problem(HttpStatus.CONFLICT, "VALORACION_INHERENTE_INCOMPLETA",
+                        "Complete los campos requeridos para confirmar.",
+                        risk.fields().stream().map(field -> invalidField("entradas." + field)).toList());
+                case STALE -> new Problem(HttpStatus.CONFLICT, "CONTEXTO_RIESGO_DESACTUALIZADO",
+                        "Revise y actualice el borrador con el contexto actual.");
+                case REASON -> new Problem(HttpStatus.BAD_REQUEST, "MOTIVO_RIESGO_INVALIDO",
+                        "Justifique un cambio de contexto valorado o una reevaluación. Omita el motivo en la primera valoración.");
+                case METHODOLOGY -> new Problem(HttpStatus.CONFLICT, "METODOLOGIA_RIESGO_NO_DISPONIBLE",
+                        "No hay una matriz aprobada disponible para esta operación.");
             };
         }
         if (failure instanceof ControlFailure control) {

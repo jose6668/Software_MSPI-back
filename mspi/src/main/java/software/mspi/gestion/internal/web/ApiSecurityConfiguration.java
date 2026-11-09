@@ -106,6 +106,13 @@ class ApiSecurityConfiguration {
                                 ApiControlImplementationController.START, ApiControlImplementationController.APPLY,
                                 ApiControlImplementationController.CHANGE, ApiControlImplementationController.VERIFY,
                                 ApiControlEvidenceController.EVIDENCE).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiInherentRiskController.RISKS, ApiInherentRiskController.RISK,
+                                ApiInherentRiskController.ASSESSMENTS, ApiInherentRiskController.LINKS).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiInherentRiskController.RISKS, ApiInherentRiskController.ANALYZE,
+                                ApiInherentRiskController.ASSESSMENTS, ApiInherentRiskController.CONFIRM,
+                                ApiInherentRiskController.LINKS).authenticated()
+                        .requestMatchers(HttpMethod.PUT, ApiInherentRiskController.RISK, ApiInherentRiskController.ASSESSMENT)
+                        .authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

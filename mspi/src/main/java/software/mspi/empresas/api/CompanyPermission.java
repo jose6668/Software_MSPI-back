@@ -17,6 +17,8 @@ public enum CompanyPermission {
     EDIT_EVALUATION_DRAFT(AE, GS),       // PER-20
     READ_CONTROLS(AE, GS, AU),           // PER-23/26, operational consultation
     EDIT_CONTROLS(AE, GS),              // PER-26
+    READ_RISKS(AE, GS, AU),             // PER-23
+    EDIT_RISKS(AE, GS),                 // PER-24/25
     EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15

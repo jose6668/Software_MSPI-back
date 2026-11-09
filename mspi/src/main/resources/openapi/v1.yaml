@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.16.0'
+  version: '1.17.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1579,6 +1579,304 @@ paths:
               schema: {type: string, format: binary}
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarRiesgos
+      summary: Lista riesgos con filtros opcionales de código y estado
+      description: Requiere AE, GS o AU con acceso vigente a la empresa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - name: codigo
+          in: query
+          schema: {type: string, maxLength: 80}
+        - name: estado
+          in: query
+          schema: {type: string, enum: [IDENTIFICADO, EN_ANALISIS]}
+      responses:
+        '200':
+          description: Lista riesgos con filtros opcionales de código y estado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: registrarRiesgo
+      summary: Registra un riesgo identificado
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRisk'
+      responses:
+        '201':
+          description: Registra un riesgo identificado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Risk'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    get:
+      operationId: consultarRiesgo
+      summary: Consulta un riesgo y su valoración inherente
+      description: Requiere AE, GS o AU con acceso vigente a la empresa.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Consulta un riesgo y su valoración inherente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Risk'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: editarRiesgo
+      summary: Actualiza datos del riesgo y señala cambios del contexto valorado
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditRisk'
+      responses:
+        '200':
+          description: Actualiza datos del riesgo y señala cambios del contexto valorado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Risk'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/iniciar-analisis:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    post:
+      operationId: iniciarAnalisisRiesgo
+      summary: Pasa el riesgo de identificado a en análisis
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRevision'
+      responses:
+        '200':
+          description: Pasa el riesgo de identificado a en análisis
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Risk'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-inherentes:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    get:
+      operationId: listarValoracionesInherentes
+      summary: Lista el historial de valoraciones inherentes
+      description: Requiere AE, GS o AU con acceso vigente a la empresa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista el historial de valoraciones inherentes
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InherentAssessmentPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: iniciarValoracionInherente
+      summary: Crea un borrador de valoración inherente
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInherentAssessment'
+      responses:
+        '201':
+          description: Crea un borrador de valoración inherente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InherentAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-inherentes/{valoracionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+      - $ref: '#/components/parameters/InherentAssessmentId'
+    put:
+      operationId: editarValoracionInherente
+      summary: Actualiza las entradas del borrador inherente
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditInherentAssessment'
+      responses:
+        '200':
+          description: Actualiza las entradas del borrador inherente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InherentAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-inherentes/{valoracionId}/confirmar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+      - $ref: '#/components/parameters/InherentAssessmentId'
+    post:
+      operationId: confirmarValoracionInherente
+      summary: Confirma entradas completas con la matriz versionada
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRevision'
+      responses:
+        '200':
+          description: Confirma entradas completas con la matriz versionada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InherentAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/implementaciones-control:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    get:
+      operationId: listarControlesDeRiesgo
+      summary: Lista las implementaciones vinculadas al riesgo
+      description: Requiere AE, GS o AU con acceso vigente a la empresa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Lista las implementaciones vinculadas al riesgo
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskControlLinkPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: vincularControlARiesgo
+      summary: Vincula una implementación local sin cambiar la valoración
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRiskControlLink'
+      responses:
+        '201':
+          description: Vincula una implementación local sin cambiar la valoración
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskControlLink'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/procesos:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -2256,6 +2554,16 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    RiskId:
+      name: riesgoId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    InherentAssessmentId:
+      name: valoracionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ResponseEvidenceId:
       name: evidenciaId
       in: path
@@ -2639,6 +2947,152 @@ components:
       required: [elementos, pagina, tamano, hayMas]
       properties:
         elementos: {type: array, items: {$ref: '#/components/schemas/EvaluationFinding'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    RiskBase:
+      type: object
+      additionalProperties: false
+      required: [activoPrincipalId, amenaza, vulnerabilidad, descripcion]
+      properties:
+        activoPrincipalId: {type: string, format: uuid}
+        amenaza: {type: string, minLength: 1, maxLength: 1000}
+        vulnerabilidad: {type: string, minLength: 1, maxLength: 1000}
+        descripcion: {type: string, minLength: 1}
+    RiskDetails:
+      type: object
+      additionalProperties: false
+      required: [activoPrincipalId, amenaza, vulnerabilidad, descripcion, responsableId]
+      properties:
+        activoPrincipalId: {type: string, format: uuid}
+        amenaza: {type: string, minLength: 1, maxLength: 1000}
+        vulnerabilidad: {type: string, minLength: 1, maxLength: 1000}
+        descripcion: {type: string, minLength: 1}
+        responsableId: {type: string, format: uuid}
+        tratamientoPropuesto: {type: [string, 'null'], enum: [REDUCIR, COMPARTIR, ACEPTAR, EVITAR, null]}
+    CreateRisk:
+      type: object
+      additionalProperties: false
+      required: [codigo, detalle]
+      properties:
+        codigo: {type: string, minLength: 1, maxLength: 80}
+        detalle: {$ref: '#/components/schemas/RiskDetails'}
+    EditRisk:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, detalle]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        detalle: {$ref: '#/components/schemas/RiskDetails'}
+        motivo: {type: [string, 'null'], maxLength: 2000}
+    Risk:
+      type: object
+      additionalProperties: false
+      required: [riesgoId, codigo, detalle, estado, revision, inherenteVigenteId, nivelInherente, requiereRevision, motivoRevision, creadaPor, creadaEn]
+      properties:
+        riesgoId: {type: string, format: uuid}
+        codigo: {type: string, minLength: 1}
+        detalle: {$ref: '#/components/schemas/RiskDetails'}
+        estado: {type: string, enum: [IDENTIFICADO, EN_ANALISIS]}
+        revision: {type: integer, format: int64, minimum: 0}
+        inherenteVigenteId: {type: [string, 'null'], format: uuid}
+        nivelInherente: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
+        requiereRevision: {type: boolean}
+        motivoRevision: {type: [string, 'null'], maxLength: 2000}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+    InherentInputs:
+      type: object
+      additionalProperties: false
+      properties:
+        probabilidad: {type: [string, 'null'], enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA, null]}
+        impacto: {type: [string, 'null'], enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO, null]}
+        periodoReferencia: {type: [string, 'null'], maxLength: 150}
+        fundamento: {type: [string, 'null']}
+        supuestos: {type: [string, 'null']}
+        fuente: {type: [string, 'null']}
+    CreateInherentAssessment:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, entradas]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        entradas: {$ref: '#/components/schemas/InherentInputs'}
+        motivoReevaluacion: {type: [string, 'null'], maxLength: 2000}
+    EditInherentAssessment:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, entradas]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        entradas: {$ref: '#/components/schemas/InherentInputs'}
+    InherentAssessment:
+      type: object
+      additionalProperties: false
+      required: [valoracionId, riesgoId, versionMetodologiaId, valoracionAnteriorId, motivoReevaluacion, revisionRiesgo, entradas, estadoResultado, nivel, probabilidadIndice, impactoIndice, requiereRevision, base, creadaPor, creadaEn, confirmadaPor, confirmadaEn]
+      properties:
+        valoracionId: {type: string, format: uuid}
+        riesgoId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+        valoracionAnteriorId: {type: [string, 'null'], format: uuid}
+        motivoReevaluacion: {type: [string, 'null'], maxLength: 2000}
+        revisionRiesgo: {type: integer, format: int64, minimum: 0}
+        entradas: {$ref: '#/components/schemas/InherentInputs'}
+        estadoResultado: {type: string, enum: [BORRADOR, CONFIRMADA]}
+        nivel: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
+        probabilidadIndice: {type: [number, 'null']}
+        impactoIndice: {type: [number, 'null']}
+        requiereRevision: {type: boolean}
+        base: {anyOf: [{$ref: '#/components/schemas/RiskBase'}, {type: 'null'}]}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+        confirmadaPor: {type: [string, 'null'], format: uuid}
+        confirmadaEn: {type: [string, 'null'], format: date-time}
+    CreateRiskControlLink:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, implementacionId, efectoEsperado, justificacion]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        implementacionId: {type: string, format: uuid}
+        efectoEsperado: {type: string, enum: [PROBABILIDAD, IMPACTO, AMBOS]}
+        justificacion: {type: string, minLength: 1}
+    RiskControlLink:
+      type: object
+      additionalProperties: false
+      required: [vinculoId, implementacionId, efectoEsperado, justificacion, revisionRiesgo, creadaPor, creadaEn]
+      properties:
+        vinculoId: {type: string, format: uuid}
+        implementacionId: {type: string, format: uuid}
+        efectoEsperado: {type: string, enum: [PROBABILIDAD, IMPACTO, AMBOS]}
+        justificacion: {type: string, minLength: 1}
+        revisionRiesgo: {type: integer, format: int64, minimum: 0}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+    RiskPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/Risk'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    InherentAssessmentPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/InherentAssessment'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    RiskControlLinkPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/RiskControlLink'}}
         pagina: {type: integer, minimum: 0}
         tamano: {type: integer, minimum: 1, maximum: 100}
         hayMas: {type: boolean}

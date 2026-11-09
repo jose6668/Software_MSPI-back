@@ -125,20 +125,25 @@ def inventory(db):
             if state == "ACTIVA":
                 raise ValueError("Empresa activa sin esquema de evidencias.")
             continue
-        if version not in ("8", "9"):
-            raise ValueError("El inventario de evidencias admite esquemas empresariales V8 y V9.")
+        if version not in ("8", "9", "10"):
+            raise ValueError("El inventario de evidencias admite esquemas empresariales V8, V9 y V10.")
         record = sql(db, f"""SELECT jsonb_build_object(
           'evaluaciones', (SELECT count(*) FROM "{schema}".evaluaciones),
           'cuota_ocupada', (SELECT bytes_ocupados FROM "{schema}".uso_evidencias),
           'evidencias', COALESCE((SELECT jsonb_agg(jsonb_build_array(empresa_id,id,tamano_bytes,
             huella_contenido,estado_inspeccion) ORDER BY id) FROM "{schema}".evidencias
             WHERE estado_carga = 'DISPONIBLE'), '[]'));""")
-        if version == "9":
+        if version in ("9", "10"):
             record["controles"] = sql(db, f"""SELECT jsonb_build_object(
               'implementaciones', (SELECT count(*) FROM "{schema}".implementaciones_control),
               'versiones', (SELECT count(*) FROM "{schema}".versiones_implementacion_control),
               'aplicaciones', (SELECT count(*) FROM "{schema}".aplicaciones_control),
               'verificaciones', (SELECT count(*) FROM "{schema}".verificaciones_control));""")
+        if version == "10":
+            record["riesgos"] = sql(db, f"""SELECT jsonb_build_object(
+              'registros', (SELECT count(*) FROM "{schema}".riesgos),
+              'inherentes', (SELECT count(*) FROM "{schema}".valoraciones_inherentes),
+              'vinculos', (SELECT count(*) FROM "{schema}".riesgos_implementaciones));""")
         occupied = 0
         for owner, item, length, digest, _ in record["evidencias"]:
             if owner != company:
