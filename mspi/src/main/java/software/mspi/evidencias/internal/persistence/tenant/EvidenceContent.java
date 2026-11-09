@@ -20,7 +20,7 @@ import software.mspi.evidencias.api.EvidenceFailure;
 import static software.mspi.evidencias.api.EvidenceFailure.Reason.*;
 
 record EvidenceContent(byte[] bytes, String type, String digest) {
-    private static final int MAX_BYTES = 10_000_000;
+    static final int MAX_BYTES = 10_000_000;
     private static final int MAX_PIXELS = 20_000_000;
     private static final byte[] PNG_START = HexFormat.of().parseHex("89504e470d0a1a0a");
     private static final byte[] PNG_END = HexFormat.of().parseHex("0000000049454e44ae426082");
@@ -29,16 +29,29 @@ record EvidenceContent(byte[] bytes, String type, String digest) {
     private static final byte[] PDF_START = "%PDF-".getBytes(StandardCharsets.US_ASCII);
     private static final byte[] PDF_END = "%%EOF".getBytes(StandardCharsets.US_ASCII);
 
-    static EvidenceContent inspect(String name, InputStream input) {
+    static byte[] read(String name, InputStream input) {
         if (name == null || name.isBlank() || name.length() > 255 || name.indexOf('/') >= 0
                 || name.indexOf('\\') >= 0 || name.codePoints().anyMatch(c ->
                         Character.isISOControl(c) || Character.getType(c) == Character.FORMAT)) {
             throw new EvidenceFailure(INVALID_FILE);
         }
         String lower = name.toLowerCase(Locale.ROOT);
+        if (!(lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".pdf"))) {
+            throw new EvidenceFailure(INVALID_FILE);
+        }
         try {
             byte[] bytes = input.readNBytes(MAX_BYTES + 1);
             if (bytes.length > MAX_BYTES) throw new EvidenceFailure(TOO_LARGE);
+            if (bytes.length == 0) throw new EvidenceFailure(INVALID_FILE);
+            return bytes;
+        } catch (IOException failure) {
+            throw new EvidenceFailure(INVALID_FILE);
+        }
+    }
+
+    static EvidenceContent inspect(String name, byte[] bytes) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        try {
             if (lower.endsWith(".png") && starts(bytes, PNG_START) && ends(bytes, bytes.length, PNG_END)) {
                 verifyImage(bytes, "PNG");
                 return new EvidenceContent(bytes, "image/png", sha256(bytes));
@@ -106,7 +119,7 @@ record EvidenceContent(byte[] bytes, String type, String digest) {
         return HexFormat.of().formatHex(newSha256().digest(bytes));
     }
 
-    static MessageDigest newSha256() {
+    private static MessageDigest newSha256() {
         try {
             return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException impossible) {

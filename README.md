@@ -85,3 +85,5 @@ HU-005 incorpora el comando técnico `prepare <uuid>` para registrar intentos, v
 La persistencia común y la empresarial usan unidades JPA distintas. Cada unidad de trabajo empresarial fija actor y empresa durante la transacción, con el runtime exclusivo de esa empresa y pools acotados. Se deshabilitan las cachés compartidas de entidades y consultas.
 
 La unidad JPA empresarial está deshabilitada por defecto. Activarla exige límites explícitos, secretos externos y autorización por operación. Las consultas del selector usan el registro común. [Aislamiento JPA](docs/AISLAMIENTO-JPA.md) y [permisos por empresa](docs/PERMISOS-EMPRESA.md).
+
+HU-SEG-008 incorpora [inspección antimalware y cuarentena de evidencias](docs/INSPECCION-EVIDENCIAS.md). El módulo requiere un motor privado con firmas vigentes y las empresas deben actualizarse a V8 antes de usar esta versión.

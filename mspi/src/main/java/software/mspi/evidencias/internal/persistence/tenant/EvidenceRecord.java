@@ -7,11 +7,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 import software.mspi.evidencias.api.ResponseEvidence.Metadata;
 import software.mspi.evidencias.api.ResponseEvidence.Target;
 
 @Entity
 @Table(name = "evidencias")
+@DynamicUpdate
 class EvidenceRecord {
     @Id UUID id;
     @Column(name = "empresa_id", updatable = false) UUID company;
@@ -23,6 +25,9 @@ class EvidenceRecord {
     @Column(name = "huella_contenido", updatable = false) String digest;
     @Column(name = "descripcion", updatable = false) String description;
     @Column(name = "estado_carga", insertable = false) String state;
+    @Column(name = "estado_inspeccion") String inspection;
+    @Column(name = "inspeccionada_en") Instant inspectedAt;
+    @Column(name = "motor_firma") String engine;
     @Column(name = "creada_por", updatable = false) UUID author;
     @Column(name = "creada_en", updatable = false) Instant created;
 
@@ -44,6 +49,6 @@ class EvidenceRecord {
     }
 
     Metadata metadata() {
-        return new Metadata(id, name, type, size, description, author, created);
+        return new Metadata(id, name, type, size, description, author, created, inspection);
     }
 }
