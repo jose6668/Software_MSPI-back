@@ -1,5 +1,7 @@
 # Límites de entrada y sobrecarga — HU-SEG-005
 
+HU-SEG-009 amplía esta política con [presupuestos separados por tipo de tráfico](hu/HU-SEG-009.md). Los límites de dirección y concurrencia de esta ficha describen la entrega inicial.
+
 La aplicación aplica un control común de admisión antes de CSRF, validación de sesión en PostgreSQL, lectura de cuerpo y controladores. Actúa en las dos cadenas de Spring Security: también cubre rutas ajenas a la API que podrían crear sesiones anónimas al comprobar CSRF. Los rechazos conservan las cabeceras de seguridad. Los permisos y CSRF existentes siguen vigentes.
 
 ## Límites activos por instancia

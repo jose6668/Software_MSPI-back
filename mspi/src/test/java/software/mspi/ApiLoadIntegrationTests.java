@@ -19,7 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "mspi.load.json-bytes=1024", "mspi.load.max-sessions=2"
+        "mspi.load.json-bytes=1024", "mspi.load.max-sessions=2",
+        "mspi.load.requests-per-address=8", "mspi.load.login-requests-per-address=6"
 })
 @ActiveProfiles("test")
 @Import(PostgresTestConfiguration.class)
@@ -72,7 +73,28 @@ class ApiLoadIntegrationTests {
         }
         assertThat(send("GET", SESSION, cookie, null, null, false).statusCode()).isEqualTo(200);
         assertThat(send("DELETE", SESSION, cookie, token(csrf), null, false).statusCode()).isEqualTo(204);
-        assertThat(send("GET", CSRF, null, null, null, false).statusCode()).isEqualTo(200);
+        var replacement = send("GET", CSRF, null, null, null, false);
+        assertThat(replacement.statusCode()).isEqualTo(200);
+        var secondLogin = send("POST", SESSION, cookie(replacement), token(replacement),
+                mapper.writeValueAsString(Map.of("correo", email, "contrasena", password)), false);
+        assertThat(secondLogin.statusCode()).isEqualTo(200);
+        String active = cookie(secondLogin);
+        HttpResponse<String> burst = null;
+        for (int i = 0; i < 10; i++) burst = send("GET", "/api/v1", null, null, null, false);
+        assertRateLimited(burst);
+        assertRateLimited(send("GET", SESSION, "MSPISESSION=not-a-server-session", null, null, false));
+        assertThat(send("GET", SESSION, active, null, null, false).statusCode()).isEqualTo(200);
+        assertThat(send("GET", CSRF, active, null, null, false).statusCode()).isEqualTo(200);
+        // A real cookie must not move POST login to the account budget.
+        for (int i = 0; i < 7; i++) burst = send("POST", SESSION, active, null, "{}", false);
+        assertRateLimited(burst);
+        assertThat(send("GET", SESSION, active, null, null, false).statusCode()).isEqualTo(200);
+    }
+
+    private void assertRateLimited(HttpResponse<String> response) {
+        assertThat(response.statusCode()).isEqualTo(429);
+        assertThat(response.headers().firstValue("Retry-After")).isPresent();
+        assertThat(mapper.readTree(response.body()).path("code").asString()).isEqualTo("DEMASIADAS_SOLICITUDES");
     }
 
     private HttpResponse<String> send(String method, String path, String cookie, String token,

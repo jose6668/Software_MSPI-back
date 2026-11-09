@@ -2,6 +2,7 @@ package software.mspi.gestion.internal.web;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
@@ -16,8 +17,11 @@ import org.springframework.stereotype.Component;
 final class ApiLoadGuard {
     private final ApiLoadSettings settings;
     private final Clock clock;
-    private final Map<String, Bucket> addresses = new HashMap<>();
+    enum Traffic { ANONYMOUS, LOGIN, ACCOUNT }
+
+    private final Map<Traffic, Map<String, Bucket>> buckets = new EnumMap<>(Traffic.class);
     private final Semaphore requests;
+    private final Semaphore publicRequests;
     private final Semaphore evidence;
     private final Semaphore sessions;
 
@@ -29,21 +33,30 @@ final class ApiLoadGuard {
     ApiLoadGuard(ApiLoadSettings settings, Clock clock) {
         this.settings = settings;
         this.clock = clock;
+        for (var traffic : Traffic.values()) buckets.put(traffic, new HashMap<>());
         requests = new Semaphore(settings.concurrentRequests());
+        publicRequests = new Semaphore(Math.max(1, settings.concurrentRequests() * 3 / 4));
         evidence = new Semaphore(settings.concurrentEvidence());
         sessions = new Semaphore(settings.maxSessions());
     }
 
-    Lease enter(String address, boolean fileOperation) {
-        reserveRate(address);
-        if (!requests.tryAcquire()) throw capacity();
+    Lease enter(Traffic traffic, String key, boolean fileOperation) {
+        reserveRate(traffic, key);
+        boolean publicTraffic = traffic != Traffic.ACCOUNT;
+        if (publicTraffic && !publicRequests.tryAcquire()) throw capacity();
+        if (!requests.tryAcquire()) {
+            if (publicTraffic) publicRequests.release();
+            throw capacity();
+        }
         if (fileOperation && !evidence.tryAcquire()) {
             requests.release();
+            if (publicTraffic) publicRequests.release();
             throw capacity();
         }
         return new Lease(() -> {
             if (fileOperation) evidence.release();
             requests.release();
+            if (publicTraffic) publicRequests.release();
         });
     }
 
@@ -52,21 +65,24 @@ final class ApiLoadGuard {
         return new Lease(sessions::release);
     }
 
-    private synchronized void reserveRate(String address) {
+    private synchronized void reserveRate(Traffic traffic, String key) {
+        var entries = buckets.get(traffic);
+        int limit = switch (traffic) {
+            case ANONYMOUS -> settings.requestsPerAddress();
+            case LOGIN -> settings.loginRequestsPerAddress();
+            case ACCOUNT -> settings.requestsPerAccount();
+        };
         Instant now = clock.instant();
-        Bucket bucket = addresses.get(address);
-        if (bucket == null) {
-            if (addresses.size() >= settings.trackedAddresses()) {
-                addresses.values().removeIf(value -> !now.isBefore(value.until));
+        Bucket bucket = entries.get(key);
+        if (bucket == null || !now.isBefore(bucket.until)) {
+            if (bucket == null && entries.size() >= settings.trackedAddresses()) {
+                entries.values().removeIf(value -> !now.isBefore(value.until));
+                if (entries.size() >= settings.trackedAddresses()) throw capacity();
             }
-            if (addresses.size() >= settings.trackedAddresses()) throw capacity();
             bucket = new Bucket(now.plus(settings.window()));
-            addresses.put(address, bucket);
-        } else if (!now.isBefore(bucket.until)) {
-            bucket = new Bucket(now.plus(settings.window()));
-            addresses.put(address, bucket);
+            entries.put(key, bucket);
         }
-        if (bucket.count >= settings.requestsPerAddress()) {
+        if (bucket.count >= limit) {
             long seconds = Math.max(1, (java.time.Duration.between(now, bucket.until).toMillis() + 999) / 1000);
             throw new Rejected(HttpStatus.TOO_MANY_REQUESTS, "DEMASIADAS_SOLICITUDES", seconds);
         }

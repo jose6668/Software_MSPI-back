@@ -102,7 +102,7 @@ class ApiSecurityConfiguration {
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
                 .securityContext(config -> config.securityContextRepository(contexts))
-                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors), HeaderWriterFilter.class)
+                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors, true), HeaderWriterFilter.class)
                 .addFilterAfter(new SessionExpiryFilter(sessions, errors), ApiLoadFilter.class)
                 .csrf(config -> config.csrfTokenRepository(csrf))
                 .logout(config -> config.disable())
@@ -130,7 +130,7 @@ class ApiSecurityConfiguration {
                         .permitAll()
                         .anyRequest().denyAll())
                 .cors(withDefaults())
-                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors), HeaderWriterFilter.class)
+                .addFilterAfter(new ApiLoadFilter(load, loadSettings, errors, false), HeaderWriterFilter.class)
                 .requestCache(cache -> cache.disable())
                 .logout(config -> config.disable())
                 .build();

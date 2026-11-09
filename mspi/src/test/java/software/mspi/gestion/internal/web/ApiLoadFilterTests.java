@@ -16,7 +16,7 @@ class ApiLoadFilterTests {
     private ApiLoadFilter filter(int rate, int sessions) {
         var settings = ApiLoadGuardTests.settings(rate, 10, 2, 1, sessions);
         return new ApiLoadFilter(new ApiLoadGuard(settings, Clock.systemUTC()), settings,
-                new ApiErrors(JsonMapper.builder().build()));
+                new ApiErrors(JsonMapper.builder().build()), false);
     }
 
     @Test

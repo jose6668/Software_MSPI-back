@@ -78,6 +78,8 @@ mspi:
   load:
     window: 1m
     requests-per-address: 1200
+    login-requests-per-address: 120
+    requests-per-account: 1200
     tracked-addresses: 1024
     concurrent-requests: 32
     concurrent-evidence: 2

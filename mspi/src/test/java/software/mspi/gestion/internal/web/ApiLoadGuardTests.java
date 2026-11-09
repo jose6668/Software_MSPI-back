@@ -11,52 +11,53 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import static software.mspi.gestion.internal.web.ApiLoadGuard.Traffic.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ApiLoadGuardTests {
     static ApiLoadSettings settings(int rate, int addresses, int concurrent, int files, int sessions) {
-        return new ApiLoadSettings(Duration.ofMinutes(1), rate, addresses, concurrent, files, sessions, 1024, 10016384);
+        return new ApiLoadSettings(Duration.ofMinutes(1), rate, rate, rate, addresses, concurrent, files, sessions, 1024, 10016384);
     }
 
     @Test
     void rateIsPerAddressAndReturnsAfterTheWindow() {
         var clock = new TestClock();
         var guard = new ApiLoadGuard(settings(2, 2, 2, 1, 1), clock);
-        try (var first = guard.enter("A", false)) {}
-        try (var second = guard.enter("A", false)) {}
-        assertThatThrownBy(() -> guard.enter("A", false)).isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
+        try (var first = guard.enter(ANONYMOUS, "A", false)) {}
+        try (var second = guard.enter(ANONYMOUS, "A", false)) {}
+        assertThatThrownBy(() -> guard.enter(ANONYMOUS, "A", false)).isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
                 error -> { assertThat(error.status).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
                     assertThat(error.retryAfter).isEqualTo(60); });
-        try (var other = guard.enter("B", false)) {}
+        try (var other = guard.enter(ANONYMOUS, "B", false)) {}
         clock.advance();
-        try (var restored = guard.enter("A", false)) {}
+        try (var restored = guard.enter(ANONYMOUS, "A", false)) {}
     }
 
     @Test
     void addressMemoryIsBoundedWithoutEvictingActiveBudgets() {
         var clock = new TestClock();
         var guard = new ApiLoadGuard(settings(3, 2, 2, 1, 1), clock);
-        try (var first = guard.enter("A", false)) {}
-        try (var second = guard.enter("B", false)) {}
-        assertThatThrownBy(() -> guard.enter("C", false)).isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
+        try (var first = guard.enter(ANONYMOUS, "A", false)) {}
+        try (var second = guard.enter(ANONYMOUS, "B", false)) {}
+        assertThatThrownBy(() -> guard.enter(ANONYMOUS, "C", false)).isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
                 error -> assertThat(error.status).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
-        try (var stillAvailable = guard.enter("A", false)) {}
+        try (var stillAvailable = guard.enter(ANONYMOUS, "A", false)) {}
         clock.advance();
-        try (var recovered = guard.enter("C", false)) {}
+        try (var recovered = guard.enter(ANONYMOUS, "C", false)) {}
     }
 
     @Test
     void fileSaturationKeepsOrdinaryCapacityAndDoesNotLeakPermits() {
         var guard = new ApiLoadGuard(settings(100, 2, 2, 1, 1), Clock.systemUTC());
-        try (var file = guard.enter("A", true)) {
-            assertThatThrownBy(() -> guard.enter("A", true)).isInstanceOf(ApiLoadGuard.Rejected.class);
-            try (var ordinary = guard.enter("A", false)) {
-                assertThatThrownBy(() -> guard.enter("A", false)).isInstanceOf(ApiLoadGuard.Rejected.class);
+        try (var file = guard.enter(ACCOUNT, "A", true)) {
+            assertThatThrownBy(() -> guard.enter(ACCOUNT, "A", true)).isInstanceOf(ApiLoadGuard.Rejected.class);
+            try (var ordinary = guard.enter(ACCOUNT, "A", false)) {
+                assertThatThrownBy(() -> guard.enter(ACCOUNT, "A", false)).isInstanceOf(ApiLoadGuard.Rejected.class);
             }
-            try (var recovered = guard.enter("A", false)) {}
+            try (var recovered = guard.enter(ACCOUNT, "A", false)) {}
         }
-        try (var recovered = guard.enter("A", true)) {}
+        try (var recovered = guard.enter(ACCOUNT, "A", true)) {}
     }
 
     @Test
@@ -70,7 +71,7 @@ class ApiLoadGuardTests {
             var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
             for (int i = 0; i < 12; i++) futures.add(executor.submit(() -> {
                 ApiLoadGuard.Lease lease = null;
-                try { lease = guard.enter("A", false); admitted.incrementAndGet(); }
+                try { lease = guard.enter(ACCOUNT, "A", false); admitted.incrementAndGet(); }
                 catch (ApiLoadGuard.Rejected expected) {}
                 finally { attempted.countDown(); }
                 if (lease != null) {
@@ -83,8 +84,28 @@ class ApiLoadGuardTests {
             assertThat(admitted.get()).isEqualTo(3);
             release.countDown();
             for (var future : futures) future.get(5, TimeUnit.SECONDS);
-            try (var recovered = guard.enter("A", false)) {}
+            try (var recovered = guard.enter(ACCOUNT, "A", false)) {}
         } finally { release.countDown(); executor.shutdownNow(); }
+    }
+
+    @Test
+    void exhaustedPublicTrafficLeavesRateAndConcurrencyForKnownAccounts() {
+        var guard = new ApiLoadGuard(settings(2, 1, 4, 1, 1), Clock.systemUTC());
+        try (var a = guard.enter(ANONYMOUS, "shared", false);
+             var b = guard.enter(ANONYMOUS, "shared", false);
+             var c = guard.enter(LOGIN, "shared", false)) {
+            assertThatThrownBy(() -> guard.enter(ANONYMOUS, "shared", false))
+                    .isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
+                            error -> assertThat(error.status).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+            assertThatThrownBy(() -> guard.enter(LOGIN, "shared", false))
+                    .isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
+                            error -> assertThat(error.status).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+            try (var d = guard.enter(ACCOUNT, "account", false)) {}
+        }
+        try (var d = guard.enter(ACCOUNT, "account", false)) {}
+        assertThatThrownBy(() -> guard.enter(ACCOUNT, "account", false))
+                .isInstanceOfSatisfying(ApiLoadGuard.Rejected.class,
+                        error -> assertThat(error.status).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
     }
 
     @Test

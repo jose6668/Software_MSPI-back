@@ -15,18 +15,24 @@ import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import software.mspi.identidad.api.SessionIdentity;
+
+import static software.mspi.gestion.internal.web.ApiLoadGuard.Traffic.*;
 
 final class ApiLoadFilter extends OncePerRequestFilter {
     private static final String SESSION_LEASE = ApiLoadFilter.class.getName() + ".lease";
     private final ApiLoadGuard guard;
     private final ApiLoadSettings settings;
     private final ApiErrors errors;
+    private final boolean api;
 
-    ApiLoadFilter(ApiLoadGuard guard, ApiLoadSettings settings, ApiErrors errors) {
+    ApiLoadFilter(ApiLoadGuard guard, ApiLoadSettings settings, ApiErrors errors, boolean api) {
         this.guard = guard;
         this.settings = settings;
         this.errors = errors;
+        this.api = api;
     }
 
     @Override
@@ -36,7 +42,7 @@ final class ApiLoadFilter extends OncePerRequestFilter {
         boolean multipart = type != null && type.toLowerCase(Locale.ROOT).startsWith("multipart/form-data");
         boolean fileOperation = multipart || request.getServletPath().contains("/evidencias")
                 || request.getRequestURI().contains("/evidencias");
-        try (var lease = guard.enter(request.getRemoteAddr(), fileOperation)) {
+        try (var lease = admit(request, fileOperation)) {
             int limit = multipart ? settings.multipartBytes() : settings.jsonBytes();
             if (request.getContentLengthLong() > limit) throw new BodyTooLarge();
             chain.doFilter(new LimitedRequest(request, limit), response);
@@ -48,6 +54,23 @@ final class ApiLoadFilter extends OncePerRequestFilter {
             errors.write(request, response, new ApiErrors.Problem(HttpStatus.CONTENT_TOO_LARGE,
                     "CARGA_DEMASIADO_GRANDE", "La carga supera el limite permitido."));
         }
+    }
+
+    private ApiLoadGuard.Lease admit(HttpServletRequest request, boolean fileOperation) {
+        String address = request.getRemoteAddr();
+        if (!api) return guard.enter(ANONYMOUS, address, fileOperation);
+        String path = request.getServletPath();
+        if ("POST".equals(request.getMethod())) {
+            if (ApiSessionController.SESSION.equals(path)) return guard.enter(LOGIN, address, fileOperation);
+            if (ApiRecoveryController.REQUEST.equals(path) || ApiRecoveryController.CONFIRM.equals(path)
+                    || ApiInvitationController.ENROLL.equals(path)) return guard.enter(ANONYMOUS, address, fileOperation);
+        }
+        // Only the server's security context can identify an account. The next filter still checks revocation.
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof SessionIdentity identity) {
+            return guard.enter(ACCOUNT, identity.getName(), fileOperation);
+        }
+        return guard.enter(ANONYMOUS, address, fileOperation);
     }
 
     private final class LimitedRequest extends HttpServletRequestWrapper {
