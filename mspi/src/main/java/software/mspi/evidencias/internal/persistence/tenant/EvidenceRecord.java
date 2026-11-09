@@ -9,7 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.DynamicUpdate;
 import software.mspi.evidencias.api.ResponseEvidence.Metadata;
-import software.mspi.evidencias.api.ResponseEvidence.Target;
+import software.mspi.evidencias.internal.persistence.tenant.JpaResponseEvidence.StoreTarget;
 
 @Entity
 @Table(name = "evidencias")
@@ -19,6 +19,8 @@ class EvidenceRecord {
     @Column(name = "empresa_id", updatable = false) UUID company;
     @Column(name = "evaluacion_id", updatable = false) UUID evaluation;
     @Column(name = "respuesta_id", updatable = false) UUID response;
+    @Column(name = "implementacion_id", updatable = false) UUID implementation;
+    @Column(name = "version_implementacion_id", updatable = false) UUID version;
     @Column(name = "nombre_original", updatable = false) String name;
     @Column(name = "tipo_detectado", updatable = false) String type;
     @Column(name = "tamano_bytes", updatable = false) int size;
@@ -33,11 +35,13 @@ class EvidenceRecord {
 
     protected EvidenceRecord() {}
 
-    EvidenceRecord(Target target, String name, String description, EvidenceContent content) {
+    EvidenceRecord(StoreTarget target, String name, String description, EvidenceContent content) {
         id = UUID.randomUUID();
         company = target.company();
         evaluation = target.evaluation();
         response = target.response();
+        implementation = target.implementation();
+        version = target.version();
         this.name = name;
         this.description = description;
         type = content.type();

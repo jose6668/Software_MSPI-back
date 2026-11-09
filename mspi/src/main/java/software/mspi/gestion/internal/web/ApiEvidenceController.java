@@ -72,7 +72,10 @@ class ApiEvidenceController {
     ResponseEntity<byte[]> download(@PathVariable UUID empresaId, @PathVariable UUID evaluacionId,
             @PathVariable UUID respuestaId, @PathVariable UUID evidenciaId,
             @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
-        var download = evidence.download(target(empresaId, evaluacionId, respuestaId, actor, request), evidenciaId);
+        return file(evidence.download(target(empresaId, evaluacionId, respuestaId, actor, request), evidenciaId));
+    }
+
+    static ResponseEntity<byte[]> file(ResponseEvidence.Download download) {
         var metadata = download.metadata();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .contentType(MediaType.parseMediaType(metadata.tipoDetectado()))

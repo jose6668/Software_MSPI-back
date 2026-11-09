@@ -35,6 +35,7 @@ import software.mspi.activos.api.ClassificationFailure;
 import software.mspi.auditoria.api.SecurityIncidents;
 import software.mspi.auditoria.api.SecurityIncidents.Type;
 import software.mspi.catalogos.api.ReferenceNotFound;
+import software.mspi.controles.api.ControlFailure;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.InvitationFailure;
 import software.mspi.empresas.api.PlatformFailure;
@@ -218,6 +219,25 @@ final class ApiErrors {
                         "No se pudo verificar la seguridad del archivo. Intente más tarde.");
                 case STORAGE -> new Problem(HttpStatus.SERVICE_UNAVAILABLE, "ALMACENAMIENTO_EVIDENCIAS_NO_DISPONIBLE",
                         "No se pudo completar la operación con el archivo.");
+            };
+        }
+        if (failure instanceof ControlFailure control) {
+            return switch (control.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_CONTROL_INCOMPATIBLE",
+                        "La implementación o su versión no admite esta operación.");
+                case CATALOG -> new Problem(HttpStatus.CONFLICT, "CONTROL_CATALOGO_NO_DISPONIBLE",
+                        "Seleccione un control de una edición publicada disponible para nuevos usos.");
+                case RESPONSIBLE -> new Problem(HttpStatus.CONFLICT, "RESPONSABLE_NO_DISPONIBLE",
+                        "Seleccione un responsable de negocio activo de la empresa.");
+                case DATES -> new Problem(HttpStatus.BAD_REQUEST, "FECHA_CONTROL_INVALIDA",
+                        "La aplicación no puede ser futura y la próxima revisión debe ser futura.");
+                case CRITERIA -> new Problem(HttpStatus.BAD_REQUEST, "CRITERIOS_VERIFICACION_INVALIDOS",
+                        "Indique al menos un criterio evaluado y un número válido de criterios cumplidos.");
+                case EVIDENCE -> new Problem(HttpStatus.CONFLICT, "EVIDENCIA_CONTROL_NO_DISPONIBLE",
+                        "Seleccione una evidencia íntegra y disponible de esta versión.");
+                case NEW_EVIDENCE -> new Problem(HttpStatus.CONFLICT, "EVIDENCIA_CONTROL_YA_VERIFICADA",
+                        "Una nueva verificación requiere otro adjunto de la versión.");
             };
         }
         if (failure instanceof ReferenceNotFound) {
