@@ -4,7 +4,8 @@ import java.util.List;
 
 public final class RiskFailure extends RuntimeException {
     public enum Reason { MISSING, STATE, CODE, ASSET, RESPONSIBLE, IMPLEMENTATION, DUPLICATE_LINK, DRAFT_EXISTS,
-        INCOMPLETE, STALE, REASON, METHODOLOGY }
+        INCOMPLETE, STALE, REASON, METHODOLOGY, BASE_INHERENTE, RESIDUAL_PROOF, RESIDUAL_MITIGATION, RESIDUAL_DRAFT_EXISTS,
+        RESIDUAL_INCOMPLETE }
 
     private final Reason reason;
     private final List<String> fields;

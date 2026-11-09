@@ -9,7 +9,7 @@ import org.flywaydb.core.Flyway;
 /** Invoked by the technical process, not registered as a Spring application bean. */
 public final class SchemaMigrator {
 
-    public static final String TENANT_STRUCTURE_VERSION = "10";
+    public static final String TENANT_STRUCTURE_VERSION = "11";
 
     private static final Pattern URL_CREDENTIAL = Pattern.compile(
             "[?&](user|password|sslpassword)=|^jdbc:postgresql://[^/]*@", Pattern.CASE_INSENSITIVE);

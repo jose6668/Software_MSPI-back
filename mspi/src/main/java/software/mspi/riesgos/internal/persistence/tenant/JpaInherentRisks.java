@@ -1,5 +1,8 @@
 package software.mspi.riesgos.internal.persistence.tenant;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,27 +22,31 @@ import software.mspi.activos.api.BusinessCode;
 import software.mspi.auditoria.api.ActivityLog;
 import software.mspi.catalogos.api.ReferenceCatalogs;
 import software.mspi.catalogos.api.ReferenceNotFound;
+import software.mspi.empresas.api.CompanyAccess;
 import software.mspi.empresas.api.CompanyPermission;
 import software.mspi.empresas.api.TenantUnitOfWork;
 import software.mspi.riesgos.api.InherentRisks;
+import software.mspi.riesgos.api.ResidualRisks;
 import software.mspi.riesgos.api.RiskFailure;
 
 import static software.mspi.riesgos.api.RiskFailure.Reason.*;
 
 @Service
 @ConditionalOnProperty(name = "mspi.tenancy.enabled", havingValue = "true")
-final class JpaInherentRisks implements InherentRisks {
+final class JpaInherentRisks implements InherentRisks, ResidualRisks {
     private final TenantUnitOfWork work;
     private final ReferenceCatalogs catalogs;
     private final ActivityLog audit;
+    private final CompanyAccess access;
 
     @PersistenceContext(unitName = "enterprise")
     private EntityManager entities;
 
-    JpaInherentRisks(TenantUnitOfWork work, ReferenceCatalogs catalogs, ActivityLog audit) {
+    JpaInherentRisks(TenantUnitOfWork work, ReferenceCatalogs catalogs, ActivityLog audit, CompanyAccess access) {
         this.work = work;
         this.catalogs = catalogs;
         this.audit = audit;
+        this.access = access;
     }
 
     @Override
@@ -191,6 +198,119 @@ final class JpaInherentRisks implements InherentRisks {
         });
     }
 
+    @Override
+    public Page<Residual> residuals(Scope scope, UUID id, int page, int size) {
+        return read(scope, () -> {
+            var risk = find(scope, id, LockModeType.PESSIMISTIC_READ);
+            var rows = window(entities.createQuery("""
+                    select v from ResidualAssessment v where v.company = :company and v.risk = :risk
+                    order by v.created desc, v.id
+                    """, ResidualAssessment.class).setParameter("company", scope.company()).setParameter("risk", id), page, size);
+            var results = new ResidualDependencies(entities).views(risk, rows.stream().limit(size).toList());
+            return new Page<>(results, page, size, rows.size() > size);
+        });
+    }
+
+    @Override
+    public Residual startResidual(Scope scope, UUID id, long revision, Draft draft, String reason) {
+        return write(scope, CompanyPermission.EDIT_RISKS, () -> {
+            var risk = editable(scope, id, revision);
+            var base = requireInherent(risk);
+            if ((risk.residual == null) != (reason == null)) throw new RiskFailure(REASON);
+            requireDistinct(draft);
+            var residual = new ResidualAssessment(risk, base, scope.actor(), draft, reason);
+            entities.persist(residual);
+            risk.revision++;
+            record(scope, residual.id, "VALORACION_RESIDUAL", "INICIAR_RESIDUAL", null, "BORRADOR", reason);
+            return residual.view(risk, List.of(), List.of());
+        });
+    }
+
+    @Override
+    public Residual editResidual(Scope scope, UUID id, UUID residualId, long revision, Draft draft) {
+        return write(scope, CompanyPermission.EDIT_RISKS, () -> {
+            var risk = editable(scope, id, revision);
+            var residual = residualDraft(risk, residualId);
+            requireDistinct(draft);
+            residual.update(requireInherent(risk), draft);
+            risk.revision++;
+            record(scope, residual.id, "VALORACION_RESIDUAL", "EDITAR_RESIDUAL", "BORRADOR", "BORRADOR", null);
+            return residual.view(risk, List.of(), List.of());
+        });
+    }
+
+    @Override
+    public Residual confirmResidual(Scope scope, UUID id, UUID residualId, long revision) {
+        return write(scope, CompanyPermission.EDIT_RISKS, () -> {
+            var risk = editable(scope, id, revision);
+            var residual = residualDraft(risk, residualId);
+            var base = requireInherent(risk);
+            if (!base.id.equals(residual.inherent)) throw new RiskFailure(BASE_INHERENTE);
+            var missing = RiskMatrix.missing(residual.inputs());
+            if (!missing.isEmpty()) throw new RiskFailure(RESIDUAL_INCOMPLETE, missing);
+
+            ZoneId zone = ZoneId.of(access.require(scope.company(), CompanyPermission.EDIT_RISKS).zonaHoraria());
+            var dependencies = new ResidualDependencies(entities);
+            dependencies.lockLinkedControls(risk);
+            var proofs = requireMitigation(risk, residual, base, zone, dependencies);
+            var rules = methodology(scope.company(), residual.method).reglas();
+            var result = RiskMatrix.calculate(rules, residual.probability, residual.impact);
+            for (var proof : proofs) entities.persist(new ResidualControl(residual, proof));
+            entities.flush();
+
+            residual.level = result.level();
+            residual.probabilityIndex = result.probabilityIndex();
+            residual.impactIndex = result.impactIndex();
+            residual.confirmedBy = scope.actor();
+            residual.confirmedAt = Instant.now();
+            if (proofs.stream().anyMatch(proof -> !proof.venceEn().isAfter(residual.confirmedAt))) {
+                throw new RiskFailure(RESIDUAL_PROOF);
+            }
+            risk.residual = residual.id;
+            risk.revision++;
+            record(scope, residual.id, "VALORACION_RESIDUAL", "CONFIRMAR_RESIDUAL", "BORRADOR", "CONFIRMADA", null);
+            return residual.view(risk, proofs, List.of());
+        });
+    }
+
+    private static void requireDistinct(Draft draft) {
+        if (new HashSet<>(draft.verificaciones()).size() != draft.verificaciones().size()) {
+            throw new RiskFailure(RESIDUAL_PROOF);
+        }
+    }
+
+    private InherentAssessment requireInherent(RiskRecord risk) {
+        requireState(risk, State.EN_ANALISIS);
+        if (risk.current == null || risk.reviewReason != null) throw new RiskFailure(BASE_INHERENTE);
+        var base = entities.find(InherentAssessment.class, risk.current);
+        if (base == null || base.confirmedAt == null || base.context != risk.context) throw new RiskFailure(BASE_INHERENTE);
+        return base;
+    }
+
+    private ResidualAssessment residualDraft(RiskRecord risk, UUID id) {
+        requireState(risk, State.EN_ANALISIS);
+        var residual = entities.find(ResidualAssessment.class, id);
+        if (residual == null || !risk.company.equals(residual.company) || !risk.id.equals(residual.risk)) {
+            throw new RiskFailure(MISSING);
+        }
+        if (residual.confirmedAt != null) throw new RiskFailure(STATE);
+        return residual;
+    }
+
+    private List<Proof> requireMitigation(RiskRecord risk, ResidualAssessment residual, InherentAssessment base, ZoneId zone,
+                                          ResidualDependencies dependencies) {
+        if (residual.withoutMitigation == null) throw new RiskFailure(RESIDUAL_MITIGATION);
+        if (residual.withoutMitigation) {
+            if (residual.absenceReason == null || residual.selected.length != 0
+                    || residual.probability != base.probability || residual.impact != base.impact) {
+                throw new RiskFailure(RESIDUAL_MITIGATION);
+            }
+            return List.of();
+        }
+        if (residual.absenceReason != null || residual.selected.length == 0) throw new RiskFailure(RESIDUAL_MITIGATION);
+        return dependencies.verify(risk, List.of(residual.selected), zone);
+    }
+
     private RiskRecord find(Scope scope, UUID id, LockModeType lock) {
         var risk = entities.find(RiskRecord.class, id, lock);
         if (risk == null || !scope.company().equals(risk.company)) throw new RiskFailure(MISSING);
@@ -273,6 +393,7 @@ final class JpaInherentRisks implements InherentRisks {
                 case "riesgo_codigo_local" -> new RiskFailure(CODE);
                 case "riesgo_control_unico" -> new RiskFailure(DUPLICATE_LINK);
                 case "riesgo_un_borrador_inherente" -> new RiskFailure(DRAFT_EXISTS);
+                case "riesgo_un_borrador_residual" -> new RiskFailure(RESIDUAL_DRAFT_EXISTS);
                 default -> failure;
             };
         }

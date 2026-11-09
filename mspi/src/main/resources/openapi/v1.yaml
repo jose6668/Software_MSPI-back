@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.17.0'
+  version: '1.18.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1826,6 +1826,119 @@ paths:
                 $ref: '#/components/schemas/InherentAssessment'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-residuales:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    get:
+      operationId: listarValoracionesResiduales
+      summary: Consulta el historial con avisos de revisión
+      description: Requiere AE, GS o AU con acceso vigente a la empresa.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Consulta el historial con avisos de revisión
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidualPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: iniciarValoracionResidual
+      summary: Crea un borrador a partir de la inherente vigente
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResidualAssessment'
+      responses:
+        '201':
+          description: Crea un borrador a partir de la inherente vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidualAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-residuales/{residualId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+      - $ref: '#/components/parameters/ResidualId'
+    put:
+      operationId: editarValoracionResidual
+      summary: Actualiza el borrador y lo vincula a la inherente vigente
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditResidualAssessment'
+      responses:
+        '200':
+          description: Actualiza el borrador y lo vincula a la inherente vigente
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidualAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/valoraciones-residuales/{residualId}/confirmar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+      - $ref: '#/components/parameters/ResidualId'
+    post:
+      operationId: confirmarValoracionResidual
+      summary: Calcula y conserva la valoración con sus verificaciones
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationRevision'
+      responses:
+        '200':
+          description: Calcula y conserva la valoración con sus verificaciones
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidualAssessment'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/implementaciones-control:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -2564,6 +2677,11 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ResidualId:
+      name: residualId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ResponseEvidenceId:
       name: evidenciaId
       in: path
@@ -3048,6 +3166,86 @@ components:
         creadaEn: {type: string, format: date-time}
         confirmadaPor: {type: [string, 'null'], format: uuid}
         confirmadaEn: {type: [string, 'null'], format: date-time}
+    ResidualDraft:
+      type: object
+      additionalProperties: false
+      required: [entradas]
+      properties:
+        entradas: {$ref: '#/components/schemas/InherentInputs'}
+        sinMitigacion: {type: [boolean, 'null']}
+        justificacionSinMitigacion: {type: [string, 'null'], maxLength: 2000}
+        verificaciones: {type: [array, 'null'], maxItems: 100, items: {type: string, format: uuid}}
+    CreateResidualAssessment:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, datos]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        datos: {$ref: '#/components/schemas/ResidualDraft'}
+        motivoReevaluacion: {type: [string, 'null'], maxLength: 2000}
+    EditResidualAssessment:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, datos]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        datos: {$ref: '#/components/schemas/ResidualDraft'}
+    ResidualProof:
+      type: object
+      additionalProperties: false
+      required: [implementacionId, versionId, verificacionId, evidenciaAplicacionId, evidenciaVerificacionId, venceEn]
+      properties:
+        implementacionId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid}
+        verificacionId: {type: string, format: uuid}
+        evidenciaAplicacionId: {type: string, format: uuid}
+        evidenciaVerificacionId: {type: string, format: uuid}
+        venceEn: {type: string, format: date-time}
+    ResidualNotice:
+      type: object
+      additionalProperties: false
+      required: [causa, referenciaId, detectadoEn, resueltoEn]
+      properties:
+        causa:
+          type: string
+          enum: [CONTEXTO_CAMBIADO, INHERENTE_SUSTITUIDA, VERSION_CONTROL_CAMBIADA, VERIFICACION_SUSTITUIDA, EVIDENCIA_BLOQUEADA, CONTROL_VINCULADO, VERIFICACION_VENCIDA]
+        referenciaId: {type: string, format: uuid}
+        detectadoEn: {type: string, format: date-time}
+        resueltoEn: {type: [string, 'null'], format: date-time}
+    ResidualAssessment:
+      type: object
+      additionalProperties: false
+      required: [residualId, riesgoId, inherenteId, versionMetodologiaId, anteriorId, motivoReevaluacion, revisionRiesgo, datos, estadoResultado, nivel, probabilidadIndice, impactoIndice, vigente, requiereRevision, pruebas, avisos, creadaPor, creadaEn, confirmadaPor, confirmadaEn]
+      properties:
+        residualId: {type: string, format: uuid}
+        riesgoId: {type: string, format: uuid}
+        inherenteId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+        anteriorId: {type: [string, 'null'], format: uuid}
+        motivoReevaluacion: {type: [string, 'null'], maxLength: 2000}
+        revisionRiesgo: {type: integer, format: int64, minimum: 0}
+        datos: {$ref: '#/components/schemas/ResidualDraft'}
+        estadoResultado: {type: string, enum: [BORRADOR, CONFIRMADA]}
+        nivel: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
+        probabilidadIndice: {type: [number, 'null']}
+        impactoIndice: {type: [number, 'null']}
+        vigente: {type: boolean}
+        requiereRevision: {type: boolean}
+        pruebas: {type: array, items: {$ref: '#/components/schemas/ResidualProof'}}
+        avisos: {type: array, items: {$ref: '#/components/schemas/ResidualNotice'}}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+        confirmadaPor: {type: [string, 'null'], format: uuid}
+        confirmadaEn: {type: [string, 'null'], format: date-time}
+    ResidualPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ResidualAssessment'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
     CreateRiskControlLink:
       type: object
       additionalProperties: false
