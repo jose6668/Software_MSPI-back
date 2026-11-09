@@ -41,6 +41,10 @@ jobs:
           bash ./mvnw --version
           docker info
 
+      - name: Test recovery archive safeguards
+        working-directory: .
+        run: python3 -m unittest discover -s scripts/recovery
+
       - name: Generate disposable TLS material outside the checkout
         shell: pwsh
         working-directory: .
