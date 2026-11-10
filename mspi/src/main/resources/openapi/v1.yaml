@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.19.0'
+  version: '1.20.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -2013,7 +2013,7 @@ paths:
           $ref: '#/components/responses/Problem'
     put:
       operationId: editarAccion
-      summary: Ajusta la acción pendiente con motivo
+      summary: Ajusta la acción pendiente o en ejecución con motivo
       description: Requiere AE o GS con sesión, CSRF y revisión esperada.
       security:
         - sessionCookie: []
@@ -2035,6 +2035,174 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ImprovementAction'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/avances:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    post:
+      operationId: registrarAvanceAccion
+      summary: Registra avance por el responsable actual
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActionProgress'}
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImprovementAction'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/entregas:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    post:
+      operationId: entregarAccion
+      summary: Congela una entrega del responsable para revisión
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActionDelivery'}
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImprovementAction'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/entregas/{entregaId}/decision:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+      - name: entregaId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: decidirEntregaAccion
+      summary: Aprueba o devuelve la entrega mediante otro AE o GS
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActionDecision'}
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImprovementAction'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/historial:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    get:
+      operationId: listarHistorialAccion
+      summary: Consulta el historial operativo de una acción autorizada
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ActionEvent'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/evidencias:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    get:
+      operationId: listarEvidenciasAccion
+      summary: Lista archivos privados de la acción
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResponseEvidencePage'}
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: cargarEvidenciaAccion
+      summary: Carga un archivo privado antes de enviar la entrega
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - name: revisionEsperada
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 0}
+        - name: descripcion
+          in: query
+          schema: {type: string, maxLength: 1000}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo: {type: string, format: binary}
+      responses:
+        '201':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActionEvidenceUpload'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/evidencias/{evidenciaId}/archivo:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+      - $ref: '#/components/parameters/ActionEvidenceId'
+    get:
+      operationId: descargarEvidenciaAccion
+      summary: Descarga un archivo privado de la acción
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Archivo privado
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/acciones/{accionId}/cancelar:
@@ -3457,6 +3625,47 @@ components:
       properties:
         revisionEsperada: {type: integer, format: int64, minimum: 0}
         motivo: {type: string, minLength: 1, maxLength: 2000}
+    ActionEvidenceUpload:
+      type: object
+      required: [evidencia, revisionAccion]
+      properties:
+        evidencia: {$ref: '#/components/schemas/ResponseEvidence'}
+        revisionAccion: {type: integer, format: int64, minimum: 1}
+    ActionProgress:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, comentario]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        comentario: {type: string, minLength: 1, maxLength: 2000}
+    ActionDelivery:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, comentario]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        comentario: {type: string, minLength: 1, maxLength: 2000}
+        evidenciaId: {type: [string, 'null'], format: uuid}
+    ActionDecision:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, decision, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        decision: {type: string, enum: [APROBAR, DEVOLVER]}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    ActionEvent:
+      type: object
+      required: [eventoId, tipo, autorId, responsableMembresiaId, creadaEn]
+      properties:
+        eventoId: {type: string, format: uuid}
+        tipo: {type: string, enum: [INICIADA, AVANCE, SOLICITUD_REVISION, APROBADA, DEVUELTA]}
+        comentario: {type: [string, 'null']}
+        autorId: {type: string, format: uuid}
+        responsableMembresiaId: {type: string, format: uuid}
+        entregaId: {type: [string, 'null'], format: uuid}
+        evidenciaId: {type: [string, 'null'], format: uuid}
+        creadaEn: {type: string, format: date-time}
     ImprovementAction:
       type: object
       additionalProperties: false
@@ -3484,6 +3693,8 @@ components:
         motivoCambio: {type: [string, 'null']}
         creadaPor: {type: string, format: uuid}
         creadaEn: {type: string, format: date-time}
+        entregaVigenteId: {type: [string, 'null'], format: uuid}
+        finalizadaEn: {type: [string, 'null'], format: date-time}
     ActionPage:
       type: object
       additionalProperties: false

@@ -5,7 +5,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -80,7 +83,7 @@ final class JpaImprovementActions implements ImprovementActions {
             var membership = access.require(scope.company(), CompanyPermission.EDIT_ACTIONS);
             access.requireActionAssignee(scope.company(), draft.assigneeMembership());
             var data = draftData(draft);
-            validate(data, membership.zonaHoraria());
+            validate(data, membership.zonaHoraria(), null);
             var now = Instant.now();
             var action = new ImprovementActionRecord(UUID.randomUUID(), scope.company(),
                     "AC-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase(), data, scope.actor(), now);
@@ -98,12 +101,12 @@ final class JpaImprovementActions implements ImprovementActions {
     public Action edit(Scope scope, UUID id, long revision, Draft draft, String reason) {
         return work.execute(scope.actor(), scope.company(), CompanyPermission.EDIT_ACTIONS, () -> {
             var action = editable(scope, id, revision);
-            if (!"PENDIENTE".equals(action.state)) throw conflict();
+            if (!executing(action)) throw conflict();
             if (reason == null || reason.isBlank()) throw invalid();
             var membership = access.require(scope.company(), CompanyPermission.EDIT_ACTIONS);
             access.requireActionAssignee(scope.company(), draft.assigneeMembership());
             var data = draftData(draft);
-            validate(data, membership.zonaHoraria());
+            validate(data, membership.zonaHoraria(), action.dueDate);
             action.update(data, reason);
             replaceContext(scope, action, draft.contextEvidence(), Instant.now());
             entities.persist(new ActionEvent(action, "ACTUALIZADA", reason, scope.actor(), Instant.now()));
@@ -159,6 +162,133 @@ final class JpaImprovementActions implements ImprovementActions {
         }
     }
 
+    @Override
+    public <T> T readEvidence(Scope scope, UUID id, Supplier<T> operation) {
+        var membership = readableMembership(scope);
+        var permission = membership == null ? CompanyPermission.READ_ACTIONS : CompanyPermission.READ_ASSIGNED_ACTIONS;
+        return work.execute(scope.actor(), scope.company(), permission, () -> {
+            var action = entities.find(ImprovementActionRecord.class, id);
+            if (action == null || !scope.company().equals(action.company)
+                    || (membership != null && !membership.equals(action.assignee))) throw missing();
+            return operation.get();
+        });
+    }
+
+    @Override
+    public List<Event> history(Scope scope, UUID id, int page, int size) {
+        return readEvidence(scope, id, () -> {
+            long offset = (long) page * size;
+            if (offset > Integer.MAX_VALUE) return List.of();
+            return entities.createQuery("""
+                    select e from ActionEvent e where e.company = :company and e.action = :action
+                    and e.type in ('INICIADA','AVANCE','SOLICITUD_REVISION','APROBADA','DEVUELTA')
+                    order by e.created, e.id
+                    """, ActionEvent.class).setParameter("company", scope.company()).setParameter("action", id)
+                    .setFirstResult((int) offset).setMaxResults(size).getResultList().stream().map(ActionEvent::view).toList();
+        });
+    }
+
+    @Override
+    public <T> Optional<T> attachEvidence(Scope scope, UUID id, long revision, Supplier<Optional<T>> publish) {
+        return work.execute(scope.actor(), scope.company(), CompanyPermission.EXECUTE_ACTION, () -> {
+            var action = assigned(scope, id, revision);
+            var result = publish.get();
+            if (result.isPresent()) {
+                action.revision++;
+                entities.flush();
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public Action advance(Scope scope, UUID id, long revision, String comment) {
+        return work.execute(scope.actor(), scope.company(), CompanyPermission.EXECUTE_ACTION, () -> {
+            var action = assigned(scope, id, revision);
+            start(scope, action);
+            saveEvent(scope, action, "AVANCE", comment, null, null);
+            action.revision++;
+            entities.flush();
+            record(scope, action, "REGISTRAR_AVANCE_ACCION", comment, action.state);
+            return view(action);
+        });
+    }
+
+    @Override
+    public Action submit(Scope scope, UUID id, long revision, String comment, UUID evidence, Supplier<Boolean> verified) {
+        return work.execute(scope.actor(), scope.company(), CompanyPermission.EXECUTE_ACTION, () -> {
+            var action = assigned(scope, id, revision);
+            if ((action.evidenceRequired && evidence == null) || (evidence != null && !verified.get())) {
+                throw new ActionFailure(ActionFailure.Reason.EVIDENCE);
+            }
+            start(scope, action);
+            action.delivery = saveEvent(scope, action, "SOLICITUD_REVISION", comment, null, evidence).id;
+            action.state = "EN_REVISION";
+            action.revision++;
+            entities.flush();
+            record(scope, action, "ENTREGAR_ACCION", comment, "EN_EJECUCION");
+            return view(action);
+        });
+    }
+
+    @Override
+    public Action decide(Scope scope, UUID id, UUID delivery, long revision, boolean approve, String reason,
+                         Predicate<UUID> verified) {
+        return work.execute(scope.actor(), scope.company(), CompanyPermission.REVIEW_ACTION, () -> {
+            var action = editable(scope, id, revision);
+            if (!"EN_REVISION".equals(action.state) || !delivery.equals(action.delivery)) throw conflict();
+            var submission = entities.find(ActionEvent.class, delivery);
+            access.requireIndependentReviewer(scope.company(), submission.author);
+            if (approve) {
+                access.requireActionAssignee(scope.company(), submission.assignee);
+                if (submission.evidence != null && !verified.test(submission.evidence)) {
+                    throw new ActionFailure(ActionFailure.Reason.EVIDENCE);
+                }
+            }
+            saveEvent(scope, action, approve ? "APROBADA" : "DEVUELTA", reason, delivery, null);
+            action.state = approve ? "COMPLETADA" : "EN_EJECUCION";
+            action.completed = approve ? Instant.now() : null;
+            if (!approve) action.delivery = null;
+            action.revision++;
+            entities.flush();
+            record(scope, action, approve ? "APROBAR_ACCION" : "DEVOLVER_ACCION", reason, "EN_REVISION");
+            return view(action);
+        });
+    }
+
+    private ImprovementActionRecord assigned(Scope scope, UUID id, long revision) {
+        var action = entities.find(ImprovementActionRecord.class, id, LockModeType.PESSIMISTIC_WRITE);
+        if (action == null || !scope.company().equals(action.company)
+                || !access.currentActionMembership(scope.company()).equals(action.assignee)) throw missing();
+        if (action.revision != revision) throw conflict();
+        if (!executing(action)) throw new ActionFailure(ActionFailure.Reason.STATE);
+        return action;
+    }
+
+    private static boolean executing(ImprovementActionRecord action) {
+        return "PENDIENTE".equals(action.state) || "EN_EJECUCION".equals(action.state);
+    }
+
+    private void start(Scope scope, ImprovementActionRecord action) {
+        if ("PENDIENTE".equals(action.state)) {
+            saveEvent(scope, action, "INICIADA", null, null, null);
+            action.state = "EN_EJECUCION";
+            action.revision++;
+            entities.flush();
+            record(scope, action, "INICIAR_ACCION", null, "PENDIENTE");
+        }
+    }
+
+    private ActionEvent saveEvent(Scope scope, ImprovementActionRecord action, String type, String comment,
+                                  UUID delivery, UUID evidence) {
+        var event = new ActionEvent(action, type, comment, scope.actor(), Instant.now());
+        event.delivery = delivery;
+        event.evidence = evidence;
+        entities.persist(event);
+        entities.flush();
+        return event;
+    }
+
     private ImprovementActionRecord editable(Scope scope, UUID id, long revision) {
         var action = entities.find(ImprovementActionRecord.class, id, LockModeType.PESSIMISTIC_WRITE);
         if (action == null || !scope.company().equals(action.company)) throw missing();
@@ -166,9 +296,9 @@ final class JpaImprovementActions implements ImprovementActions {
         return action;
     }
 
-    private void validate(ImprovementActionRecord.DraftData data, String zoneName) {
+    private void validate(ImprovementActionRecord.DraftData data, String zoneName, LocalDate previousDeadline) {
         if ((data.risk() == null) == (data.finding() == null) || data.dueDate() == null
-                || data.dueDate().isBefore(LocalDate.now(ZoneId.of(zoneName)))
+                || (!data.dueDate().equals(previousDeadline) && data.dueDate().isBefore(LocalDate.now(ZoneId.of(zoneName))))
                 || data.description() == null || data.description().isBlank()
                 || data.expectedResult() == null || data.expectedResult().isBlank()
                 || data.contextSummary() == null || data.contextSummary().isBlank()
@@ -224,7 +354,7 @@ final class JpaImprovementActions implements ImprovementActions {
         return new Action(action.id, action.code, action.risk, action.finding, assetName, action.description, action.expectedResult,
                 action.assignee, action.dueDate, action.state, overdue, action.evidenceRequired,
                 action.evidenceDescription, action.noEvidenceReason, action.contextSummary, context, action.revision,
-                action.changeReason, action.author, action.created);
+                action.changeReason, action.author, action.created, action.delivery, action.completed);
     }
 
     private void record(Scope scope, ImprovementActionRecord action, String name, String reason) {

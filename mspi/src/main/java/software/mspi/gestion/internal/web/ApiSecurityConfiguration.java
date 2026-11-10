@@ -118,9 +118,12 @@ class ApiSecurityConfiguration {
                         .authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiResidualRiskController.RESIDUAL).authenticated()
                         .requestMatchers(HttpMethod.GET, ApiImprovementActionController.ACTIONS,
-                                ApiImprovementActionController.ACTION).authenticated()
+                                ApiImprovementActionController.ACTION, ApiImprovementActionController.HISTORY,
+                                ApiEvidenceController.ACTION_EVIDENCE, ApiEvidenceController.ACTION_FILE).authenticated()
                         .requestMatchers(HttpMethod.POST, ApiImprovementActionController.ACTIONS,
-                                ApiImprovementActionController.CANCEL).authenticated()
+                                ApiImprovementActionController.CANCEL, ApiImprovementActionController.ADVANCES,
+                                ApiImprovementActionController.DELIVERIES, ApiImprovementActionController.DECISION,
+                                ApiEvidenceController.ACTION_EVIDENCE).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiImprovementActionController.ACTION).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())

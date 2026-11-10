@@ -55,7 +55,7 @@ class RestoreSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "huellas de las evidencias"):
             recovery.read_bundle(self.root)
 
-    def test_inventory_preserves_old_manifests_and_counts_actions_in_v12(self):
+    def test_inventory_preserves_old_manifests_and_counts_actions_since_v12(self):
         company = "00000000-0000-4000-8000-000000000001"
         schema = "emp_" + company.replace("-", "")
         evidence = {"evaluaciones": 2, "cuota_ocupada": 0, "evidencias": []}
@@ -63,29 +63,29 @@ class RestoreSafetyTests(unittest.TestCase):
         risks = {"registros": 1, "inherentes": 2, "vinculos": 1}
         residuals = {"valoraciones": 2, "verificaciones": 1, "avisos": 1}
         actions = {"acciones": 2, "contextos": 1, "eventos": 3}
-        for version in ("8", "9", "10", "11", "12"):
+        for version in ("8", "9", "10", "11", "12", "13"):
             registry = {"empresas": [[company, schema, "ACTIVA", version]]}
             queries = [registry, True, dict(evidence)]
-            if version in ("9", "10", "11", "12"):
+            if version in ("9", "10", "11", "12", "13"):
                 queries.append(controls)
-            if version in ("10", "11", "12"):
+            if version in ("10", "11", "12", "13"):
                 queries.append(risks)
-            if version in ("11", "12"):
+            if version in ("11", "12", "13"):
                 queries.append(residuals)
-            if version == "12":
+            if version in ("12", "13"):
                 queries.append(actions)
             with patch.object(recovery, "sql", side_effect=queries) as sql:
                 inventory = recovery.inventory("postgres")
                 expected = dict(evidence)
-                if version in ("9", "10", "11", "12"):
+                if version in ("9", "10", "11", "12", "13"):
                     expected["controles"] = controls
-                if version in ("10", "11", "12"):
+                if version in ("10", "11", "12", "13"):
                     expected["riesgos"] = risks
                     self.assertTrue(any("valoraciones_inherentes" in call.args[1] for call in sql.call_args_list))
-                if version in ("11", "12"):
+                if version in ("11", "12", "13"):
                     expected["residuales"] = residuals
                     self.assertTrue(any("residual_verificaciones" in call.args[1] for call in sql.call_args_list))
-                if version == "12":
+                if version in ("12", "13"):
                     expected["acciones"] = actions
                     self.assertIn("acciones_mejora", sql.call_args.args[1])
                 self.assertEqual({company: expected}, inventory["companies"])

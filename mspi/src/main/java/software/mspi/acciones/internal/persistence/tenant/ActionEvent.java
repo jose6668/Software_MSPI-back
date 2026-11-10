@@ -19,8 +19,14 @@ class ActionEvent {
     @Column(name = "autor_id", updatable = false) UUID author;
     @Column(name = "responsable_membresia_id", updatable = false) UUID assignee;
     @Column(name = "creada_en", updatable = false) Instant created;
+    @Column(name = "entrega_id", updatable = false) UUID delivery;
+    @Column(name = "evidencia_id", updatable = false) UUID evidence;
 
     protected ActionEvent() {}
+
+    software.mspi.acciones.api.ImprovementActions.Event view() {
+        return new software.mspi.acciones.api.ImprovementActions.Event(id, type, comment, author, assignee, delivery, evidence, created);
+    }
 
     ActionEvent(ImprovementActionRecord action, String type, String comment, UUID actor, Instant now) {
         id = UUID.randomUUID();

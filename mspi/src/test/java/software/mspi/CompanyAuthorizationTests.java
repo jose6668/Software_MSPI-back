@@ -149,7 +149,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "12");
+            fixture.metadata(fixture.third, "ACTIVA", "13");
         }
     }
 
@@ -192,13 +192,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "12");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "13");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "12");
+            fixture.metadata(fixture.first, "ACTIVA", "13");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -432,7 +432,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '12' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '13' WHERE id = ?", company);
         return company;
     }
 
@@ -1015,11 +1015,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "12");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "13");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "12");
+            fixture.metadata(fixture.first, "ACTIVA", "13");
         }
     }
 
@@ -1975,7 +1975,7 @@ class CompanyAuthorizationTests {
         var previousResponsible = account();
         UUID previousMembership = member(previousResponsible, a(), "RA");
         var currentResponsible = account();
-        UUID currentMembership = member(currentResponsible, a(), "RA");
+        UUID currentMembership = member(currentResponsible, a(), "GS", "RA");
         var ae = login(editor, "203.0.113.101");
         var previousRa = login(previousResponsible, "203.0.113.102");
         var currentRa = login(currentResponsible, "203.0.113.103");
@@ -2025,6 +2025,67 @@ class CompanyAuthorizationTests {
                 .andExpect(status().isConflict());
         assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
                 + ".eventos_accion WHERE accion_id = ?", action)).isEqualTo(3);
+
+        UUID task = id(catalogPost(ACTIONS, a(), ae, Map.of("datos", reassigned))
+                .andExpect(status().isCreated()).andReturn(), "accionId");
+        String deliveries = ACTION + "/entregas";
+        catalogPost(deliveries, a(), previousRa, Map.of("revisionEsperada", 0, "comentario", "Ajena"), task)
+                .andExpect(status().isForbidden());
+        catalogPost(deliveries, a(), currentRa, Map.of("revisionEsperada", 0, "comentario", "Falta archivo"), task)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EVIDENCIA_ACCION_NO_DISPONIBLE"));
+
+        byte[] file = image("png");
+        var uploaded = mvc.perform(multipart(ACTION + "/evidencias", a(), task)
+                        .file(new MockMultipartFile("archivo", "resultado.png", "image/png", file))
+                        .param("revisionEsperada", "0").session(currentRa).with(csrf()))
+                .andExpect(status().isCreated()).andReturn();
+        UUID evidence = nestedId(uploaded, "evidencia", "evidenciaId");
+        mvc.perform(get(ACTION + "/evidencias/{evidenciaId}/archivo", a(), task, evidence).session(ae))
+                .andExpect(status().isOk()).andExpect(content().bytes(file));
+        catalogPost(deliveries, a(), currentRa, Map.of("revisionEsperada", 1, "comentario", "Trabajo listo",
+                "evidenciaId", evidence), task).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("EN_REVISION")).andExpect(jsonPath("$.revision").value(3));
+        catalogPost(ACTION + "/avances", a(), currentRa, Map.of("revisionEsperada", 3, "comentario", "Entrega congelada"), task)
+                .andExpect(status().isConflict());
+        var history = mvc.perform(get(ACTION + "/historial", a(), task).session(ae)).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].tipo").value("INICIADA"))
+                .andExpect(jsonPath("$[1].tipo").value("SOLICITUD_REVISION")).andReturn();
+        UUID delivery = UUID.fromString(mapper.readTree(history.getResponse().getContentAsByteArray())
+                .get(1).path("eventoId").asText());
+        String decision = deliveries + "/{entregaId}/decision";
+        var approval = Map.of("revisionEsperada", 3, "decision", "APROBAR", "motivo", "Resultado verificado");
+        catalogPost(decision, a(), currentRa, approval, task, delivery).andExpect(status().isForbidden());
+        catalogPost(decision, a(), ae, Map.of("revisionEsperada", 3, "decision", "DEVOLVER", "motivo", "Ajustar alcance"),
+                task, delivery).andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("EN_EJECUCION"));
+        catalogPost(decision, a(), ae, approval, task, delivery).andExpect(status().isConflict());
+        catalogPost(ACTION + "/avances", a(), currentRa, Map.of("revisionEsperada", 4, "comentario", "Ajuste registrado"), task)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(5));
+        var resubmitted = catalogPost(deliveries, a(), currentRa,
+                Map.of("revisionEsperada", 5, "comentario", "Corrección lista", "evidenciaId", evidence), task)
+                .andExpect(status().isOk()).andReturn();
+        UUID newDelivery = id(resubmitted, "entregaVigenteId");
+        var secondReviewer = account();
+        member(secondReviewer, a(), "GS");
+        var gs = login(secondReviewer, "203.0.113.104");
+        var finalApproval = Map.of("revisionEsperada", 6, "decision", "APROBAR", "motivo", "Resultado verificado");
+        var barrier = new CyclicBarrier(2);
+        var reviewers = Executors.newFixedThreadPool(2);
+        try {
+            var decisions = List.of(ae, gs).stream().map(session -> reviewers.submit(() -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return catalogPost(decision, a(), session, finalApproval, task, newDelivery)
+                        .andReturn().getResponse().getStatus();
+            })).toList();
+            assertThat(List.of(decisions.get(0).get(20, TimeUnit.SECONDS), decisions.get(1).get(20, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200, 409);
+        } finally {
+            reviewers.shutdownNow();
+        }
+        mvc.perform(get(ACTION, a(), task).session(ae)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("COMPLETADA"))
+                .andExpect(jsonPath("$.finalizadaEn").isNotEmpty());
+        assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                + ".eventos_accion WHERE entrega_id = ?", newDelivery)).isOne();
     }
 
     @Test

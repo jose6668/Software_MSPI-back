@@ -21,6 +21,7 @@ class EvidenceRecord {
     @Column(name = "respuesta_id", updatable = false) UUID response;
     @Column(name = "implementacion_id", updatable = false) UUID implementation;
     @Column(name = "version_implementacion_id", updatable = false) UUID version;
+    @Column(name = "accion_id", updatable = false) UUID action;
     @Column(name = "nombre_original", updatable = false) String name;
     @Column(name = "tipo_detectado", updatable = false) String type;
     @Column(name = "tamano_bytes", updatable = false) int size;
@@ -42,6 +43,7 @@ class EvidenceRecord {
         response = target.response();
         implementation = target.implementation();
         version = target.version();
+        action = target.action();
         this.name = name;
         this.description = description;
         type = content.type();

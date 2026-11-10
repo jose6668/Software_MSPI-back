@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import software.mspi.evidencias.api.EvidenceFailure;
+import software.mspi.evidencias.api.ActionEvidence;
 import software.mspi.evidencias.api.ResponseEvidence;
 import software.mspi.identidad.api.SessionIdentity;
 
@@ -36,11 +37,15 @@ class ApiEvidenceController {
     static final String CONTENT = EVIDENCE + "/{evidenciaId}/archivo";
     static final String ACTION_CONTEXT_CONTENT =
             ApiImprovementActionController.ACTION + "/evidencias-contexto/{evidenciaId}/archivo";
+    static final String ACTION_EVIDENCE = ApiImprovementActionController.ACTION + "/evidencias";
+    static final String ACTION_FILE = ACTION_EVIDENCE + "/{evidenciaId}/archivo";
 
     private final ResponseEvidence evidence;
+    private final ActionEvidence actionEvidence;
 
-    ApiEvidenceController(ResponseEvidence evidence) {
+    ApiEvidenceController(ResponseEvidence evidence, ActionEvidence actionEvidence) {
         this.evidence = evidence;
+        this.actionEvidence = actionEvidence;
     }
 
     @PostMapping(path = EVIDENCE, consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -86,6 +91,37 @@ class ApiEvidenceController {
         return file(evidence.downloadActionContext(target));
     }
 
+    @PostMapping(path = ACTION_EVIDENCE, consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<ActionUpload> uploadAction(@PathVariable UUID empresaId, @PathVariable UUID accionId,
+            @RequestParam @PositiveOrZero long revisionEsperada, @RequestParam(required = false) @Size(max = 1000) String descripcion,
+            @RequestPart MultipartFile archivo, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        var scope = ApiImprovementActionController.scope(empresaId, actor, request);
+        try (var stream = archivo.getInputStream()) {
+            var metadata = actionEvidence.upload(scope, accionId, revisionEsperada, archivo.getOriginalFilename(),
+                    ApiInherentRiskController.normalized(descripcion), stream);
+            String location = "/api/v1/empresas/%s/acciones/%s/evidencias/%s/archivo"
+                    .formatted(empresaId, accionId, metadata.evidenciaId());
+            return ResponseEntity.created(URI.create(location)).cacheControl(CacheControl.noStore())
+                    .body(new ActionUpload(metadata, revisionEsperada + 1));
+        } catch (IOException failure) {
+            throw new EvidenceFailure(EvidenceFailure.Reason.INVALID_FILE);
+        }
+    }
+
+    @GetMapping(path = ACTION_EVIDENCE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<ResponseEvidence.Page> listAction(@PathVariable UUID empresaId, @PathVariable UUID accionId,
+            @RequestParam(defaultValue = "0") @Min(0) int pagina, @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamano,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(actionEvidence.list(ApiImprovementActionController.scope(empresaId, actor, request), accionId, pagina, tamano));
+    }
+
+    @GetMapping(path = ACTION_FILE, produces = {"application/pdf", "image/png", "image/jpeg"})
+    ResponseEntity<byte[]> downloadAction(@PathVariable UUID empresaId, @PathVariable UUID accionId, @PathVariable UUID evidenciaId,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return file(actionEvidence.download(ApiImprovementActionController.scope(empresaId, actor, request), accionId, evidenciaId));
+    }
+
     static ResponseEntity<byte[]> file(ResponseEvidence.Download download) {
         var metadata = download.metadata();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
@@ -104,4 +140,5 @@ class ApiEvidenceController {
     }
 
     record Upload(ResponseEvidence.Metadata evidencia, long revisionEvaluacion) {}
+    record ActionUpload(ResponseEvidence.Metadata evidencia, long revisionAccion) {}
 }
