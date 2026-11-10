@@ -32,6 +32,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import org.springframework.web.servlet.ModelAndView;
 import software.mspi.activos.api.CatalogFailure;
 import software.mspi.activos.api.ClassificationFailure;
+import software.mspi.acciones.api.ActionFailure;
 import software.mspi.auditoria.api.SecurityIncidents;
 import software.mspi.auditoria.api.SecurityIncidents.Type;
 import software.mspi.catalogos.api.ReferenceNotFound;
@@ -259,6 +260,14 @@ final class ApiErrors {
                 case RESIDUAL_INCOMPLETE -> new Problem(HttpStatus.CONFLICT, "VALORACION_RESIDUAL_INCOMPLETA",
                         "Complete los campos requeridos para confirmar.",
                         risk.fields().stream().map(field -> invalidField("datos.entradas." + field)).toList());
+            };
+        }
+        if (failure instanceof ActionFailure action) {
+            return switch (action.reason()) {
+                case MISSING -> Problem.forStatus(HttpStatus.NOT_FOUND);
+                case INVALID -> validation(List.of(invalidField("datos")));
+                case STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_ACCION_INCOMPATIBLE",
+                        "El estado de la acción no admite esta operación.");
             };
         }
         if (failure instanceof ControlFailure control) {

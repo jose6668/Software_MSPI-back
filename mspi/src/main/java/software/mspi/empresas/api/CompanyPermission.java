@@ -26,6 +26,8 @@ public enum CompanyPermission {
     CHANGE_ASSET_STATE(AE, GS),   // PER-17
     READ_ASSET_HISTORY(AE),       // PER-38
     READ_ACTIONS(AE, GS, AU),     // PER-29, general access. Assigned RA views are separate.
+    READ_ASSIGNED_ACTIONS(AE, GS, RA, AU), // PER-29, records are filtered by the current assignment.
+    EDIT_ACTIONS(AE, GS), // PER-30/31
     REVIEW_ACTION(AE, GS);       // PER-33, subject to the independent reviewer rule.
 
     private final Set<CompanyRole> grantingRoles;

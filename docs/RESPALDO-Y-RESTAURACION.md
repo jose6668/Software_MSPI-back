@@ -1,6 +1,6 @@
 # Respaldo y restauración en Docker
 
-El inventario admite empresas de V8 a V11. Desde V9 coteja los recuentos de implementaciones, versiones, confirmaciones de aplicación y verificaciones. Desde V10 añade riesgos, valoraciones inherentes y vínculos. En V11 añade valoraciones residuales, verificaciones utilizadas y avisos persistidos. Las evidencias de control se cotejan por tamaño y SHA-256 en el mismo volumen privado que las evidencias de evaluación.
+El inventario admite empresas de V8 a V12. Desde V9 coteja los recuentos de implementaciones, versiones, confirmaciones de aplicación y verificaciones. Desde V10 añade riesgos, valoraciones inherentes y vínculos. Desde V11 añade valoraciones residuales, verificaciones utilizadas y avisos persistidos. En V12 coteja acciones, evidencias de contexto y eventos de actividad.
 
 La herramienta `scripts/recovery/backup_restore.py` requiere Python 3.12 o posterior y acceso de operador a Docker. Trabaja con el despliegue de recursos y la extensión de evidencias, PostgreSQL de la imagen fijada en Compose y los esquemas empresariales V8. El destino usa la misma variante de la imagen y un volumen nuevo. Esto es una copia física del clúster completo.
 

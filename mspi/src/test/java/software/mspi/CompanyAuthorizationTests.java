@@ -94,6 +94,8 @@ class CompanyAuthorizationTests {
     private static final String EVALUATIONS = "/api/v1/empresas/{empresaId}/evaluaciones";
     private static final String RISKS = "/api/v1/empresas/{empresaId}/riesgos";
     private static final String RISK = RISKS + "/{riesgoId}";
+    private static final String ACTIONS = "/api/v1/empresas/{empresaId}/acciones";
+    private static final String ACTION = ACTIONS + "/{accionId}";
     private static final String INHERENT = RISK + "/valoraciones-inherentes";
     private static final String RISK_LINKS = RISK + "/implementaciones-control";
     private static final String RESIDUALS = RISK + "/valoraciones-residuales";
@@ -147,7 +149,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "11");
+            fixture.metadata(fixture.third, "ACTIVA", "12");
         }
     }
 
@@ -190,13 +192,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "11");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "12");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "11");
+            fixture.metadata(fixture.first, "ACTIVA", "12");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -430,7 +432,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '11' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '12' WHERE id = ?", company);
         return company;
     }
 
@@ -1013,11 +1015,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "11");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "12");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "11");
+            fixture.metadata(fixture.first, "ACTIVA", "12");
         }
     }
 
@@ -1964,6 +1966,65 @@ class CompanyAuthorizationTests {
             assertSqlState(() -> statement.executeUpdate("UPDATE valoraciones_inherentes SET nivel = 'BAJO' WHERE id = '"
                     + valuation + "'"), "23514");
         }
+    }
+
+    @Test
+    void managesActionsAndRestrictsResponsibleToTheCurrentCompanyAssignment() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        var previousResponsible = account();
+        UUID previousMembership = member(previousResponsible, a(), "RA");
+        var currentResponsible = account();
+        UUID currentMembership = member(currentResponsible, a(), "RA");
+        var ae = login(editor, "203.0.113.101");
+        var previousRa = login(previousResponsible, "203.0.113.102");
+        var currentRa = login(currentResponsible, "203.0.113.103");
+
+        var refs = assetReferences(a(), ae);
+        UUID asset = classifiedAsset(a(), ae, "ACCION-ASSET", refs);
+        UUID risk = id(catalogPost(RISKS, a(), ae, Map.of("codigo", "ACCION-RISK", "detalle",
+                riskDetails(asset, refs.get("propietarioId"), "Riesgo para acción")))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+
+        Map<String, Object> details = Map.of(
+                "riesgoId", risk,
+                "descripcion", "Actualizar procedimiento de respuesta",
+                "resultadoEsperado", "Procedimiento aprobado y comunicado",
+                "responsableMembresiaId", previousMembership,
+                "fechaLimite", java.time.LocalDate.now().plusDays(1).toString(),
+                "evidenciaRequerida", true,
+                "descripcionEvidencia", "Adjuntar procedimiento aprobado",
+                "resumenContextoRa", "Actualizar el procedimiento del activo de red");
+        var created = mvc.perform(post(ACTIONS, a()).session(ae).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("datos", details))))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.codigo").isNotEmpty())
+                .andExpect(jsonPath("$.nombreActivo").value("Equipo de red"))
+                .andExpect(jsonPath("$.estado").value("PENDIENTE")).andReturn();
+        UUID action = id(created, "accionId");
+        mvc.perform(get(ACTIONS, a()).session(previousRa)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos.length()").value(1));
+        mvc.perform(get(ACTION, b(), action).session(previousRa)).andExpect(status().isForbidden());
+
+        var reassigned = new HashMap<>(details);
+        reassigned.put("responsableMembresiaId", currentMembership);
+        mvc.perform(put(ACTION, a(), action).session(ae).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("revisionEsperada", 0, "datos", reassigned,
+                                "motivo", "Redistribución del trabajo"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
+        mvc.perform(get(ACTION, a(), action).session(previousRa)).andExpect(status().isForbidden());
+        mvc.perform(get(ACTION, a(), action).session(currentRa)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.responsableMembresiaId").value(currentMembership.toString()));
+
+        mvc.perform(post(ACTION + "/cancelar", a(), action).session(ae).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("revisionEsperada", 1, "motivo", "Plan sustituido"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("CANCELADA"));
+        mvc.perform(put(ACTION, a(), action).session(ae).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(Map.of("revisionEsperada", 2, "datos", reassigned,
+                                "motivo", "Intento posterior"))))
+                .andExpect(status().isConflict());
+        assertThat(count("SELECT count(*) FROM " + fixture.first.scope().schema()
+                + ".eventos_accion WHERE accion_id = ?", action)).isEqualTo(3);
     }
 
     @Test
