@@ -2360,6 +2360,101 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.riesgoRelacionadoId").value(risk.toString()));
     }
 
+    @Test
+    void panelReconcilesFilteredDetailsAndIsolatesCompanies() throws Exception {
+        var editor = account();
+        UUID membership = member(editor, a(), "AE");
+        member(editor, b(), "AE");
+        var ae = login(editor, "203.0.113.107");
+        var auditor = account();
+        member(auditor, a(), "AU");
+        var au = login(auditor, "203.0.113.108");
+        var responsible = account();
+        member(responsible, a(), "RA");
+        var ra = login(responsible, "203.0.113.109");
+        String panel = "/api/v1/empresas/{empresaId}/panel";
+        mvc.perform(get(panel, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(panel, a()).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(panel, b()).session(au)).andExpect(status().isForbidden());
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-03").param("hasta", "2020-01-02"))
+                .andExpect(status().isBadRequest());
+
+        UUID edition = evaluationCatalog(new EvaluationItem("PANEL-1", "CONTROL", "DOM"));
+        UUID method = method(a(), ae, "EVALUACION_CONTROLES");
+        UUID evaluation = createEvaluation(a(), ae, membership, edition, method);
+        mvc.perform(get(panel, a()).session(au).param("detalle", "EVALUACIONES").param("evaluacionId", evaluation.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.evaluaciones.total").value(1))
+                .andExpect(jsonPath("$.evaluaciones.porEstado.BORRADOR").value(1))
+                .andExpect(jsonPath("$.evaluaciones.elementos[0].sinDecidir").value(1))
+                .andExpect(jsonPath("$.evaluaciones.elementos[0].versionMetodologiaId").value(method.toString()));
+        mvc.perform(get(panel, b()).session(ae).param("evaluacionId", evaluation.toString())).andExpect(status().isNotFound());
+
+        var refs = assetReferences(a(), ae);
+        UUID asset = classifiedAsset(a(), ae, "PANEL-ACTIVO", refs);
+        var details = riskDetails(asset, refs.get("propietarioId"), "Riesgo del panel");
+        var ids = new java.util.ArrayList<UUID>();
+        for (String code : List.of("PAN-VIG", "PAN-REV", "PAN-PEN")) {
+            ids.add(id(catalogPost(RISKS, a(), ae, Map.of("codigo", code, "detalle", details))
+                    .andExpect(status().isCreated()).andReturn(), "riesgoId"));
+        }
+        for (UUID risk : ids.subList(0, 2)) {
+            catalogPost(RISK + "/iniciar-analisis", a(), ae, Map.of("revisionEsperada", 0), risk).andExpect(status().isOk());
+            confirmInherentForResidual(ae, risk, 1, "BAJA", "LEVE", null);
+            var data = Map.of("entradas", riskInputs("BAJA", "LEVE"), "sinMitigacion", true,
+                    "justificacionSinMitigacion", "No existe mitigación confirmada");
+            UUID residual = id(catalogPost(RESIDUALS, a(), ae, Map.of("revisionEsperada", 3, "datos", data), risk)
+                    .andExpect(status().isCreated()).andReturn(), "residualId");
+            catalogPost(RESIDUAL + "/confirmar", a(), ae, Map.of("revisionEsperada", 4), risk, residual)
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(put(RISK, a(), ids.get(1)).session(ae).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", 5, "motivo", "Cambió el escenario",
+                        "detalle", riskDetails(asset, refs.get("propietarioId"), "Riesgo cambiado")))))
+                .andExpect(status().isOk());
+        String schema = fixture.first.scope().schema();
+        for (UUID risk : ids) sql("UPDATE " + schema + ".riesgos SET creada_en = '2020-01-02T13:00:00Z' WHERE id = ?", risk);
+
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-02").param("hasta", "2020-01-02")
+                        .param("detalle", "RIESGOS").param("tamano", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.riesgos.total").value(3))
+                .andExpect(jsonPath("$.riesgos.porSituacion.VIGENTE").value(1))
+                .andExpect(jsonPath("$.riesgos.porSituacion.REVISION_REQUERIDA").value(1))
+                .andExpect(jsonPath("$.riesgos.porSituacion.PENDIENTE").value(1))
+                .andExpect(jsonPath("$.riesgos.porNivel.BAJO").value(1))
+                .andExpect(jsonPath("$.riesgos.matriz[0].total").value(1))
+                .andExpect(jsonPath("$.riesgos.elementos.length()").value(1));
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-02").param("hasta", "2020-01-02")
+                        .param("detalle", "RIESGOS").param("probabilidad", "BAJA").param("impacto", "LEVE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.riesgos.total").value(1))
+                .andExpect(jsonPath("$.riesgos.elementos[0].riesgoId").value(ids.get(0).toString()));
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-02").param("hasta", "2020-01-02")
+                        .param("detalle", "RIESGOS").param("baseRiesgo", "INHERENTE").param("situacionRiesgo", "VIGENTE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.filtros.baseRiesgo").value("INHERENTE"))
+                .andExpect(jsonPath("$.riesgos.total").value(1))
+                .andExpect(jsonPath("$.riesgos.elementos[0].riesgoId").value(ids.get(0).toString()));
+        mvc.perform(get(panel, b()).session(ae).param("desde", "2020-01-02").param("hasta", "2020-01-02"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.riesgos.total").value(0));
+
+        var action = Map.of("riesgoId", ids.get(0), "descripcion", "Verificar", "resultadoEsperado", "Resultado revisado",
+                "responsableMembresiaId", membership, "fechaLimite", "2099-12-31", "evidenciaRequerida", false,
+                "descripcionEvidencia", "Comentario", "justificacionSinEvidencia", "Basta una nota", "resumenContextoRa", "Panel");
+        UUID open = id(catalogPost(ACTIONS, a(), ae, Map.of("datos", action)).andExpect(status().isCreated()).andReturn(), "accionId");
+        UUID cancelled = id(catalogPost(ACTIONS, a(), ae, Map.of("datos", action)).andExpect(status().isCreated()).andReturn(), "accionId");
+        sql("UPDATE " + schema + ".acciones_mejora SET fecha_limite = '2020-01-02', revision = revision + 1 WHERE id in (?, ?)",
+                open, cancelled);
+        catalogPost(ACTION + "/cancelar", a(), ae, Map.of("revisionEsperada", 1, "motivo", "No es necesaria"), cancelled)
+                .andExpect(status().isOk());
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-02").param("hasta", "2020-01-02").param("detalle", "ACCIONES"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.acciones.total").value(2))
+                .andExpect(jsonPath("$.acciones.porEstado.PENDIENTE").value(1))
+                .andExpect(jsonPath("$.acciones.porEstado.CANCELADA").value(1))
+                .andExpect(jsonPath("$.acciones.vencidas").value(1));
+        mvc.perform(get(panel, a()).session(au).param("desde", "2020-01-02").param("hasta", "2020-01-02")
+                        .param("detalle", "ACCIONES").param("vencida", "true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.acciones.total").value(1))
+                .andExpect(jsonPath("$.acciones.elementos[0].accionId").value(open.toString()));
+    }
+
     private UUID confirmInherentForResidual(MockHttpSession session, UUID risk, long revision, String probability,
                                             String impact, String reason) throws Exception {
         var input = new HashMap<String, Object>();

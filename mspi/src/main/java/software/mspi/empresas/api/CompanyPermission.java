@@ -21,6 +21,7 @@ public enum CompanyPermission {
     EDIT_RISKS(AE, GS),                 // PER-24/25
     ACCEPT_RISK(AE),                    // PER-27
     TRANSITION_RISK(AE, GS),            // PER-28
+    READ_PANEL(AE, GS, AU),             // PER-36
     EDIT_PROCESS_CATALOG(AE, GS),     // PER-13
     READ_ASSETS(AE, GS, AU),      // PER-14
     EDIT_ASSETS(AE, GS),          // PER-15

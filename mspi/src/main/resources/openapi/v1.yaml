@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.21.0'
+  version: '1.22.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1577,6 +1577,76 @@ paths:
               schema: {type: string, format: binary}
             image/jpeg:
               schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/panel:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: consultarPanelEmpresa
+      summary: Consulta los agregados de evaluaciones, riesgos y acciones de la empresa
+      description: >
+        Requiere AE, GS o AU con acceso vigente a la empresa. Desde y hasta son inclusivos:
+        filtran por fecha de evaluación, creación del riesgo en la zona de la empresa y
+        fecha límite de la acción, respectivamente. Los demás filtros afectan únicamente a
+        su sección. Solo la sección seleccionada en detalle devuelve elementos paginados.
+        Una clave ausente en los conteos o una celda ausente de la matriz equivale a cero.
+        Solo las valoraciones vigentes se incluyen en la matriz y en los filtros de nivel,
+        probabilidad e impacto. Una acción vencida conserva su estado de flujo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - name: desde
+          in: query
+          schema: {type: string, format: date}
+        - name: hasta
+          in: query
+          schema: {type: string, format: date}
+        - name: evaluacionId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: estadoEvaluacion
+          in: query
+          schema: {type: string, enum: [BORRADOR, EN_REVISION, CERRADA]}
+        - name: estadoRiesgo
+          in: query
+          schema: {type: string, enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
+        - name: baseRiesgo
+          in: query
+          schema: {type: string, enum: [INHERENTE, RESIDUAL], default: RESIDUAL}
+        - name: situacionRiesgo
+          in: query
+          schema: {type: string, enum: [VIGENTE, PENDIENTE, REVISION_REQUERIDA]}
+        - name: nivelRiesgo
+          in: query
+          schema: {type: string, enum: [BAJO, MODERADO, ALTO, EXTREMO]}
+        - name: probabilidad
+          in: query
+          schema: {type: string, enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA]}
+        - name: impacto
+          in: query
+          schema: {type: string, enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO]}
+        - name: estadoAccion
+          in: query
+          schema: {type: string, enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA]}
+        - name: vencida
+          in: query
+          schema: {type: boolean}
+        - name: detalle
+          in: query
+          schema: {type: string, enum: [EVALUACIONES, RIESGOS, ACCIONES]}
+      responses:
+        '200':
+          description: Agregados y página opcional de detalle con los mismos filtros
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyPanel'
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/riesgos:
@@ -3523,6 +3593,118 @@ components:
         revisionEsperada: {type: integer, format: int64, minimum: 0}
         detalle: {$ref: '#/components/schemas/RiskDetails'}
         motivo: {type: [string, 'null'], maxLength: 2000}
+    CompanyPanel:
+      type: object
+      additionalProperties: false
+      required: [empresaId, empresa, zonaHoraria, generadoEn, filtros, pagina, tamano, detalle, evaluaciones, riesgos, acciones]
+      properties:
+        empresaId: {type: string, format: uuid}
+        empresa: {type: string}
+        zonaHoraria: {type: string}
+        generadoEn: {type: string, format: date-time}
+        filtros: {$ref: '#/components/schemas/PanelFilters'}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        detalle: {type: [string, 'null'], enum: [EVALUACIONES, RIESGOS, ACCIONES, null]}
+        evaluaciones: {$ref: '#/components/schemas/PanelEvaluations'}
+        riesgos: {$ref: '#/components/schemas/PanelRisks'}
+        acciones: {$ref: '#/components/schemas/PanelActions'}
+    PanelFilters:
+      type: object
+      additionalProperties: false
+      required: [desde, hasta, evaluacionId, estadoEvaluacion, estadoRiesgo, baseRiesgo, situacionRiesgo, nivelRiesgo, probabilidad, impacto, estadoAccion, vencida]
+      properties:
+        desde: {type: [string, 'null'], format: date}
+        hasta: {type: [string, 'null'], format: date}
+        evaluacionId: {type: [string, 'null'], format: uuid}
+        estadoEvaluacion: {type: [string, 'null'], enum: [BORRADOR, EN_REVISION, CERRADA, null]}
+        estadoRiesgo: {type: [string, 'null'], enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO, null]}
+        baseRiesgo: {type: string, enum: [INHERENTE, RESIDUAL]}
+        situacionRiesgo: {type: [string, 'null'], enum: [VIGENTE, PENDIENTE, REVISION_REQUERIDA, null]}
+        nivelRiesgo: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
+        probabilidad: {type: [string, 'null'], enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA, null]}
+        impacto: {type: [string, 'null'], enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO, null]}
+        estadoAccion: {type: [string, 'null'], enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA, null]}
+        vencida: {type: [boolean, 'null']}
+    PanelEvaluations:
+      type: object
+      additionalProperties: false
+      required: [total, porEstado, elementos]
+      properties:
+        total: {type: integer, format: int64, minimum: 0}
+        porEstado: {type: object, propertyNames: {enum: [BORRADOR, EN_REVISION, CERRADA]}, additionalProperties: {type: integer, format: int64, minimum: 0}}
+        elementos: {type: array, items: {$ref: '#/components/schemas/PanelEvaluationRow'}}
+    PanelRisks:
+      type: object
+      additionalProperties: false
+      required: [total, porEstado, porSituacion, porNivel, matriz, elementos]
+      properties:
+        total: {type: integer, format: int64, minimum: 0}
+        porEstado: {type: object, propertyNames: {enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}, additionalProperties: {type: integer, format: int64, minimum: 0}}
+        porSituacion: {type: object, propertyNames: {enum: [VIGENTE, PENDIENTE, REVISION_REQUERIDA]}, additionalProperties: {type: integer, format: int64, minimum: 0}}
+        porNivel: {type: object, propertyNames: {enum: [BAJO, MODERADO, ALTO, EXTREMO]}, additionalProperties: {type: integer, format: int64, minimum: 0}}
+        matriz: {type: array, items: {$ref: '#/components/schemas/PanelRiskCell'}}
+        elementos: {type: array, items: {$ref: '#/components/schemas/PanelRiskRow'}}
+    PanelActions:
+      type: object
+      additionalProperties: false
+      required: [total, porEstado, vencidas, elementos]
+      properties:
+        total: {type: integer, format: int64, minimum: 0}
+        porEstado: {type: object, propertyNames: {enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA]}, additionalProperties: {type: integer, format: int64, minimum: 0}}
+        vencidas: {type: integer, format: int64, minimum: 0}
+        elementos: {type: array, items: {$ref: '#/components/schemas/PanelActionRow'}}
+    PanelEvaluationRow:
+      type: object
+      additionalProperties: false
+      required: [evaluacionId, nombre, fecha, estado, versionCatalogoId, versionMetodologiaId, sinDecidir, sinCalificacion, heredadasPendientes, controlesAplicables, controlesEvaluados, clausulasAplicables, clausulasEvaluadas]
+      properties:
+        evaluacionId: {type: string, format: uuid}
+        nombre: {type: string}
+        fecha: {type: string, format: date}
+        estado: {type: string, enum: [BORRADOR, EN_REVISION, CERRADA]}
+        versionCatalogoId: {type: string, format: uuid}
+        versionMetodologiaId: {type: string, format: uuid}
+        sinDecidir: {type: integer, format: int64, minimum: 0}
+        sinCalificacion: {type: integer, format: int64, minimum: 0}
+        heredadasPendientes: {type: integer, format: int64, minimum: 0}
+        controlesAplicables: {type: integer, format: int64, minimum: 0}
+        controlesEvaluados: {type: integer, format: int64, minimum: 0}
+        clausulasAplicables: {type: integer, format: int64, minimum: 0}
+        clausulasEvaluadas: {type: integer, format: int64, minimum: 0}
+    PanelRiskCell:
+      type: object
+      additionalProperties: false
+      required: [probabilidad, impacto, nivel, total]
+      properties:
+        probabilidad: {type: string, enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA]}
+        impacto: {type: string, enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO]}
+        nivel: {type: string, enum: [BAJO, MODERADO, ALTO, EXTREMO]}
+        total: {type: integer, format: int64, minimum: 0}
+    PanelRiskRow:
+      type: object
+      additionalProperties: false
+      required: [riesgoId, codigo, estado, situacion, valoracionId, versionMetodologiaId, nivel, probabilidad, impacto]
+      properties:
+        riesgoId: {type: string, format: uuid}
+        codigo: {type: string}
+        estado: {type: string, enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
+        situacion: {type: string, enum: [VIGENTE, PENDIENTE, REVISION_REQUERIDA]}
+        valoracionId: {type: [string, 'null'], format: uuid}
+        versionMetodologiaId: {type: [string, 'null'], format: uuid}
+        nivel: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
+        probabilidad: {type: [string, 'null'], enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA, null]}
+        impacto: {type: [string, 'null'], enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO, null]}
+    PanelActionRow:
+      type: object
+      additionalProperties: false
+      required: [accionId, codigo, estado, fechaLimite, vencida]
+      properties:
+        accionId: {type: string, format: uuid}
+        codigo: {type: string}
+        estado: {type: string, enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA]}
+        fechaLimite: {type: string, format: date}
+        vencida: {type: boolean}
     RiskTransition:
       type: object
       additionalProperties: false
