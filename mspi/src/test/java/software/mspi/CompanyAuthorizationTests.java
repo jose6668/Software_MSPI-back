@@ -62,6 +62,7 @@ import software.mspi.support.FakeClamd;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -149,7 +150,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "14");
+            fixture.metadata(fixture.third, "ACTIVA", "15");
         }
     }
 
@@ -192,13 +193,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "14");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "15");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "14");
+            fixture.metadata(fixture.first, "ACTIVA", "15");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -390,6 +391,63 @@ class CompanyAuthorizationTests {
     }
 
     @Test
+    void activityCombinesBothSourcesWithStablePaginationAndCompanyScope() throws Exception {
+        var admin = account();
+        member(admin, a(), "AE");
+        member(admin, b(), "AE");
+        var ae = login(admin, "203.0.113.110");
+        var target = account();
+        UUID membership = member(target, a(), "GS", "AU", "RA");
+        var nonAdmin = login(target, "203.0.113.111");
+        String activity = "/api/v1/empresas/{empresaId}/actividad";
+        mvc.perform(get(activity, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(activity, a()).session(nonAdmin)).andExpect(status().isForbidden());
+        mvc.perform(get(activity, a()).session(ae).param("cursor", "invalid!")).andExpect(status().isBadRequest());
+        mvc.perform(get(activity, a()).session(ae).param("desde", "2001-01-03T00:00:00Z")
+                .param("hasta", "2001-01-02T00:00:00Z")).andExpect(status().isBadRequest());
+
+        var created = catalogPost(PROCESSES, a(), ae, Map.of("nombre", "Actividad HU-028"))
+                .andExpect(status().isCreated()).andReturn();
+        UUID process = id(created, "procesoId");
+        changeRoles(ae, a(), membership, 1, List.of("AU")).andExpect(status().isNoContent());
+        // The two stores can record an event at the same instant.
+        sql("UPDATE " + fixture.first.scope().schema()
+                + ".eventos_actividad SET creado_en = '2001-01-02T00:00:00Z' WHERE objeto_id = ?", process);
+        sql("UPDATE comun.eventos_administracion_empresa SET registrado_en = '2001-01-02T00:00:00Z' WHERE membresia_id = ?",
+                membership);
+
+        var first = mvc.perform(get(activity, a()).session(ae).param("actorId", admin.id().toString())
+                        .param("desde", "2001-01-02T00:00:00Z").param("tamano", "1"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.elementos[0].origen").value("OPERATIVA"))
+                .andExpect(jsonPath("$.elementos[0].objetoId").value(process.toString()))
+                .andExpect(jsonPath("$.elementos[0].correlacionId").value(created.getResponse().getHeader("X-Correlation-Id")))
+                .andExpect(jsonPath("$.siguienteCursor").isNotEmpty()).andReturn();
+        String cursor = mapper.readTree(first.getResponse().getContentAsByteArray()).path("siguienteCursor").asString();
+        mvc.perform(get(activity, a()).session(ae).param("actorId", admin.id().toString())
+                        .param("desde", "2001-01-02T00:00:00Z").param("tamano", "1").param("cursor", cursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1))
+                .andExpect(jsonPath("$.elementos[0].origen").value("ADMINISTRATIVA"))
+                .andExpect(jsonPath("$.elementos[0].accion").value("CAMBIAR_ROLES"))
+                .andExpect(jsonPath("$.elementos[0].objetoId").value(membership.toString()))
+                .andExpect(jsonPath("$.elementos[0].motivo").value("Revisión"))
+                .andExpect(jsonPath("$.elementos[0].anterior").doesNotExist())
+                .andExpect(jsonPath("$.siguienteCursor").isEmpty());
+        mvc.perform(get(activity, a()).session(ae).param("accion", "CAMBIAR_ROLES")
+                        .param("tipoObjeto", "MEMBRESIA").param("objetoId", membership.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos.length()").value(1));
+        mvc.perform(get(activity, a()).session(ae).param("objetoId", membership.toString())
+                        .param("hasta", "2001-01-02T00:00:00Z"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos").isEmpty());
+        mvc.perform(get(activity, b()).session(ae).param("objetoId", membership.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.elementos").isEmpty());
+        mvc.perform(delete(activity, a()).session(ae).with(csrf())).andExpect(status().isForbidden());
+        try (var common = fixture.database.runtime(); var statement = common.createStatement()) {
+            assertSqlState(() -> statement.executeQuery("SELECT * FROM comun.eventos_administracion_empresa"), "42501");
+        }
+    }
+
+    @Test
     void concurrentSelfDemotionAndRevocationCannotRemoveBothAdministrators() throws Exception {
         UUID company = operableCompany();
         var first = account();
@@ -432,7 +490,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '14' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '15' WHERE id = ?", company);
         return company;
     }
 
@@ -1015,11 +1073,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "14");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "15");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "14");
+            fixture.metadata(fixture.first, "ACTIVA", "15");
         }
     }
 

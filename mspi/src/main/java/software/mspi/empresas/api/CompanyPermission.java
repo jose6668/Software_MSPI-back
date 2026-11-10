@@ -28,6 +28,7 @@ public enum CompanyPermission {
     CLASSIFY_ASSETS(AE, GS),      // PER-16
     CHANGE_ASSET_STATE(AE, GS),   // PER-17
     READ_ASSET_HISTORY(AE),       // PER-38
+    READ_ACTIVITY(AE),            // PER-38
     READ_ACTIONS(AE, GS, AU),     // PER-29, general access. Assigned RA views are separate.
     READ_ASSIGNED_ACTIONS(AE, GS, RA, AU), // PER-29, records are filtered by the current assignment.
     EDIT_ACTIONS(AE, GS), // PER-30/31

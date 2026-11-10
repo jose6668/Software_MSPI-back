@@ -92,8 +92,11 @@ public final class TenantRuntimeVerifier {
                 }
             }
         }
-        try (var statement = connection.prepareStatement("SELECT has_function_privilege(?, 'EXECUTE')")) {
+        try (var statement = connection.prepareStatement("""
+                SELECT has_function_privilege(?, 'EXECUTE') AND has_function_privilege(?, 'EXECUTE')
+                """)) {
             statement.setString(1, scope.schema() + ".historial_activo(uuid,uuid,integer,bigint)");
+            statement.setString(2, scope.schema() + ".actividad_operativa(uuid,timestamptz,timestamptz,uuid,text,text,uuid,timestamptz,boolean,uuid,integer)");
             try (var rows = statement.executeQuery()) {
                 if (!rows.next() || !rows.getBoolean(1)) {
                     throw new IllegalStateException("Permisos de historial empresarial incompatibles.");

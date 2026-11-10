@@ -1,6 +1,8 @@
 package software.mspi.auditoria.internal;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +44,43 @@ final class JpaActivityLog implements ActivityLog {
                 .setParameter("fields", String.join(",", event.changedFields()))
                 .setParameter("references", event.referenceChange() == null ? null : mapper.writeValueAsString(event.referenceChange()))
                 .executeUpdate();
+    }
+
+    @Override
+    public List<Activity> companyActivity(UUID company, Filters filters, Window window, int limit) {
+        return entities.unwrap(Session.class).doReturningWork(connection -> {
+            try (var statement = connection.prepareStatement("""
+                    SELECT * FROM actividad_operativa(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """)) {
+                statement.setObject(1, company);
+                statement.setObject(2, timestamp(filters.from()));
+                statement.setObject(3, timestamp(filters.until()));
+                statement.setObject(4, filters.actor());
+                statement.setString(5, filters.action());
+                statement.setString(6, filters.objectType());
+                statement.setObject(7, filters.objectId());
+                statement.setObject(8, timestamp(window.before()));
+                statement.setBoolean(9, window.includeSameTime());
+                statement.setObject(10, window.beforeId() == null ? null : UUID.fromString(window.beforeId()));
+                statement.setInt(11, limit);
+                try (var rows = statement.executeQuery()) {
+                    var result = new ArrayList<Activity>();
+                    while (rows.next()) {
+                        result.add(new Activity(rows.getString("evento_id"), Source.OPERATIVA,
+                                rows.getObject("actor_id", UUID.class), rows.getString("accion"),
+                                rows.getString("tipo_objeto"), rows.getObject("objeto_id", UUID.class),
+                                rows.getString("resultado"), rows.getString("motivo"),
+                                rows.getObject("correlacion_id", UUID.class),
+                                rows.getObject("registrado_en", OffsetDateTime.class).toInstant()));
+                    }
+                    return result;
+                }
+            }
+        });
+    }
+
+    private static OffsetDateTime timestamp(Instant time) {
+        return time == null ? null : time.atOffset(ZoneOffset.UTC);
     }
 
     @Override

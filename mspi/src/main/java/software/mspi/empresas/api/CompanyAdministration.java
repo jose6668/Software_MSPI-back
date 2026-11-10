@@ -3,8 +3,13 @@ package software.mspi.empresas.api;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import software.mspi.auditoria.api.ActivityLog.Activity;
+import software.mspi.auditoria.api.ActivityLog.Filters;
+import software.mspi.auditoria.api.ActivityLog.Window;
 
 public interface CompanyAdministration {
+
+    List<Activity> activity(UUID companyId, Filters filters, Window window, int limit);
 
     Configuration configuration(UUID companyId);
 

@@ -6,6 +6,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +18,10 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import software.mspi.auditoria.api.ActivityLog.Activity;
+import software.mspi.auditoria.api.ActivityLog.Filters;
+import software.mspi.auditoria.api.ActivityLog.Source;
+import software.mspi.auditoria.api.ActivityLog.Window;
 import software.mspi.empresas.api.CompanyAdministration;
 import software.mspi.empresas.api.CompanyAdministrationFailure;
 import software.mspi.empresas.api.CompanyRole;
@@ -32,6 +37,24 @@ final class JdbcCompanyAdministration implements CompanyAdministration {
     JdbcCompanyAdministration(JdbcClient jdbc, ActiveSession session) {
         this.jdbc = jdbc;
         this.session = session;
+    }
+
+    @Override
+    public List<Activity> activity(UUID companyId, Filters filters, Window window, int limit) {
+        return translate(() -> forCompany("""
+                SELECT * FROM comun.actividad_administrativa(:actor, :company, :version, :from, :until,
+                    :eventActor, :action, :type, :object, :before, :includeSameTime, :beforeId, :limit)
+                """, companyId)
+                .param("from", timestamp(filters.from())).param("until", timestamp(filters.until()))
+                .param("eventActor", filters.actor()).param("action", filters.action())
+                .param("type", filters.objectType()).param("object", filters.objectId())
+                .param("before", timestamp(window.before())).param("includeSameTime", window.includeSameTime())
+                .param("beforeId", window.beforeId() == null ? null : Long.valueOf(window.beforeId()))
+                .param("limit", limit)
+                .query((row, index) -> new Activity(row.getString("evento_id"), Source.ADMINISTRATIVA,
+                        row.getObject("actor_id", UUID.class), row.getString("accion"), row.getString("tipo_objeto"),
+                        row.getObject("objeto_id", UUID.class), row.getString("resultado"), row.getString("motivo"),
+                        row.getObject("correlacion_id", UUID.class), instant(row, "registrado_en"))).list());
     }
 
     @Override
@@ -121,6 +144,10 @@ final class JdbcCompanyAdministration implements CompanyAdministration {
     private static Instant instant(ResultSet row, String column) throws SQLException {
         var date = row.getObject(column, OffsetDateTime.class);
         return date == null ? null : date.toInstant();
+    }
+
+    private static OffsetDateTime timestamp(Instant time) {
+        return time == null ? null : time.atOffset(ZoneOffset.UTC);
     }
 
     private static <T> T translate(Supplier<T> operation) {
