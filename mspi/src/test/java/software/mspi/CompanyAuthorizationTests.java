@@ -2011,7 +2011,7 @@ class CompanyAuthorizationTests {
                         .content(mapper.writeValueAsString(Map.of("revisionEsperada", 0, "datos", reassigned,
                                 "motivo", "Redistribución del trabajo"))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
-        mvc.perform(get(ACTION, a(), action).session(previousRa)).andExpect(status().isNotFound());
+        mvc.perform(get(ACTION, a(), action).session(previousRa)).andExpect(status().isForbidden());
         mvc.perform(get(ACTION, a(), action).session(currentRa)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.responsableMembresiaId").value(currentMembership.toString()));
 
