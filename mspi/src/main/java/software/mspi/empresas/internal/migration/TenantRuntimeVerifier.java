@@ -56,6 +56,7 @@ public final class TenantRuntimeVerifier {
             verifyEvaluationGrants(connection, scope);
             verifyControlGrants(connection, scope);
             verifyRiskGrants(connection, scope);
+            verifyActionGrants(connection, scope);
         }
     }
 
@@ -207,6 +208,36 @@ public final class TenantRuntimeVerifier {
             try (var rows = statement.executeQuery()) {
                 if (!rows.next() || rows.getInt(1) != 4) {
                     throw new IllegalStateException("Permisos de implementaciones de control incompatibles.");
+                }
+            }
+        }
+    }
+
+    private static void verifyActionGrants(Connection connection, MigrationScope scope) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ? AND c.relkind = 'r' AND pg_get_userbyid(c.relowner) = ?
+                  AND CASE c.relname
+                    WHEN 'acciones_mejora' THEN has_table_privilege(c.oid, 'SELECT,INSERT')
+                        AND NOT has_table_privilege(c.oid, 'DELETE,TRUNCATE,TRIGGER,REFERENCES')
+                        AND has_column_privilege(c.oid, 'revision', 'UPDATE')
+                        AND has_column_privilege(c.oid, 'riesgo_id', 'UPDATE')
+                        AND has_column_privilege(c.oid, 'hallazgo_id', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'codigo', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'empresa_id', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'accion_anterior_id', 'UPDATE')
+                    WHEN 'accion_evidencias_contexto' THEN has_table_privilege(c.oid, 'SELECT,INSERT,DELETE')
+                        AND NOT has_table_privilege(c.oid, 'UPDATE,TRUNCATE,TRIGGER,REFERENCES')
+                    WHEN 'eventos_accion' THEN has_table_privilege(c.oid, 'SELECT,INSERT')
+                        AND NOT has_table_privilege(c.oid, 'UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES')
+                    ELSE false END
+                """)) {
+            statement.setString(1, scope.schema());
+            statement.setString(2, scope.migrationRole());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next() || rows.getInt(1) != 3) {
+                    throw new IllegalStateException("Permisos de acciones de mejora incompatibles.");
                 }
             }
         }

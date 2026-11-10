@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.18.0'
+  version: '1.19.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1939,6 +1939,160 @@ paths:
                 $ref: '#/components/schemas/ResidualAssessment'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: listarAcciones
+      summary: Lista las acciones visibles en la empresa activa
+      description: RA consulta únicamente acciones que mantiene asignadas.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Acciones autorizadas
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionPage'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: crearAccion
+      summary: Crea y asigna una acción de mejora
+      description: Requiere AE o GS con sesión y CSRF.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAction'
+      responses:
+        '201':
+          description: Acción creada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImprovementAction'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    get:
+      operationId: consultarAccion
+      summary: Consulta una acción autorizada
+      description: RA accede solo mientras conserva la asignación vigente.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Acción consultada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImprovementAction'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      operationId: editarAccion
+      summary: Ajusta la acción pendiente con motivo
+      description: Requiere AE o GS con sesión, CSRF y revisión esperada.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditAction'
+      responses:
+        '200':
+          description: Acción actualizada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImprovementAction'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/cancelar:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+    post:
+      operationId: cancelarAccion
+      summary: Cancela una acción abierta con motivo
+      description: Requiere AE o GS con sesión, CSRF y revisión esperada.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionCancellation'
+      responses:
+        '200':
+          description: Acción cancelada
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImprovementAction'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/acciones/{accionId}/evidencias-contexto/{evidenciaId}/archivo:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/ActionId'
+      - $ref: '#/components/parameters/ActionEvidenceId'
+    get:
+      operationId: descargarEvidenciaContextoAccion
+      summary: Descarga evidencia seleccionada para la acción
+      description: Requiere acceso actual a la acción y selección explícita de la evidencia.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Archivo privado autorizado
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/jpeg:
+              schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/implementaciones-control:
     parameters:
       - $ref: '#/components/parameters/InvitationCompany'
@@ -2677,6 +2831,16 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ActionId:
+      name: accionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ActionEvidenceId:
+      name: evidenciaId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ResidualId:
       name: residualId
       in: path
@@ -3243,6 +3407,89 @@ components:
       required: [elementos, pagina, tamano, hayMas]
       properties:
         elementos: {type: array, items: {$ref: '#/components/schemas/ResidualAssessment'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    ActionContextEvidence:
+      type: object
+      additionalProperties: false
+      required: [evidenciaId, motivoContexto]
+      properties:
+        evidenciaId: {type: string, format: uuid}
+        motivoContexto: {type: string, minLength: 1, maxLength: 1000}
+    ActionData:
+      type: object
+      additionalProperties: false
+      required: [descripcion, resultadoEsperado, responsableMembresiaId, fechaLimite, evidenciaRequerida, descripcionEvidencia, resumenContextoRa]
+      properties:
+        riesgoId: {type: [string, 'null'], format: uuid}
+        hallazgoId: {type: [string, 'null'], format: uuid}
+        descripcion: {type: string, minLength: 1}
+        resultadoEsperado: {type: string, minLength: 1}
+        responsableMembresiaId: {type: string, format: uuid}
+        fechaLimite: {type: string, format: date}
+        evidenciaRequerida: {type: boolean}
+        descripcionEvidencia: {type: string, minLength: 1, maxLength: 2000}
+        justificacionSinEvidencia: {type: [string, 'null'], maxLength: 2000}
+        resumenContextoRa: {type: string, minLength: 1}
+        evidenciasContexto:
+          type: [array, 'null']
+          maxItems: 20
+          items: {$ref: '#/components/schemas/ActionContextEvidence'}
+    CreateAction:
+      type: object
+      additionalProperties: false
+      required: [datos]
+      properties:
+        datos: {$ref: '#/components/schemas/ActionData'}
+    EditAction:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, datos, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        datos: {$ref: '#/components/schemas/ActionData'}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    ActionCancellation:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+    ImprovementAction:
+      type: object
+      additionalProperties: false
+      required: [accionId, codigo, riesgoId, hallazgoId, nombreActivo, descripcion, resultadoEsperado, responsableMembresiaId, fechaLimite, estado, vencida, evidenciaRequerida, descripcionEvidencia, justificacionSinEvidencia, resumenContextoRa, evidenciasContexto, revision, motivoCambio, creadaPor, creadaEn]
+      properties:
+        accionId: {type: string, format: uuid}
+        codigo: {type: string}
+        riesgoId: {type: [string, 'null'], format: uuid}
+        hallazgoId: {type: [string, 'null'], format: uuid}
+        nombreActivo: {type: [string, 'null']}
+        descripcion: {type: string}
+        resultadoEsperado: {type: string}
+        responsableMembresiaId: {type: string, format: uuid}
+        fechaLimite: {type: string, format: date}
+        estado: {type: string, enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA]}
+        vencida: {type: boolean}
+        evidenciaRequerida: {type: boolean}
+        descripcionEvidencia: {type: string}
+        justificacionSinEvidencia: {type: [string, 'null']}
+        resumenContextoRa: {type: string}
+        evidenciasContexto:
+          type: array
+          items: {$ref: '#/components/schemas/ActionContextEvidence'}
+        revision: {type: integer, format: int64, minimum: 0}
+        motivoCambio: {type: [string, 'null']}
+        creadaPor: {type: string, format: uuid}
+        creadaEn: {type: string, format: date-time}
+    ActionPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/ImprovementAction'}}
         pagina: {type: integer, minimum: 0}
         tamano: {type: integer, minimum: 1, maximum: 100}
         hayMas: {type: boolean}

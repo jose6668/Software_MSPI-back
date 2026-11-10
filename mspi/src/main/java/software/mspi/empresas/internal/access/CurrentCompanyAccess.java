@@ -59,6 +59,51 @@ final class CurrentCompanyAccess implements CompanyAccess, TenantAccessPolicy {
     }
 
     @Override
+    public ActionAssignee requireActionAssignee(UUID companyId, UUID membershipId) {
+        return jdbc.sql("""
+                SELECT m.id, m.usuario_id, array_agg(r.rol_codigo ORDER BY r.rol_codigo) AS roles
+                FROM comun.membresias m
+                JOIN comun.empresas e ON e.id = m.empresa_id
+                JOIN comun.membresia_roles r ON r.membresia_id = m.id
+                WHERE m.id = :membership AND m.empresa_id = :company
+                  AND m.estado = 'ACTIVA' AND e.estado = 'ACTIVA'
+                  AND e.version_estructura = :version
+                GROUP BY m.id, m.usuario_id
+                """)
+                .param("membership", membershipId).param("company", companyId)
+                .param("version", SchemaMigrator.TENANT_STRUCTURE_VERSION)
+                .query((row, index) -> {
+                    var roles = row.getArray("roles");
+                    try {
+                        return new ActionAssignee(row.getObject("id", UUID.class),
+                                row.getObject("usuario_id", UUID.class), Arrays.stream((String[]) roles.getArray())
+                                        .map(CompanyRole::valueOf).toList());
+                    } finally {
+                        roles.free();
+                    }
+                })
+                .optional()
+                .filter(assignee -> assignee.roles().stream().anyMatch(role ->
+                        role == CompanyRole.AE || role == CompanyRole.GS || role == CompanyRole.RA))
+                .orElseThrow(CurrentCompanyAccess::denied);
+    }
+
+    @Override
+    public UUID currentActionMembership(UUID companyId) {
+        UUID actor = session.requireActiveUser();
+        return jdbc.sql("""
+                SELECT m.id FROM comun.membresias m
+                JOIN comun.empresas e ON e.id = m.empresa_id
+                WHERE m.usuario_id = :actor AND m.empresa_id = :company
+                  AND m.estado = 'ACTIVA' AND e.estado = 'ACTIVA'
+                  AND e.version_estructura = :version
+                """)
+                .param("actor", actor).param("company", companyId)
+                .param("version", SchemaMigrator.TENANT_STRUCTURE_VERSION)
+                .query(UUID.class).optional().orElseThrow(CurrentCompanyAccess::denied);
+    }
+
+    @Override
     public void requireAccess(UUID actorId, UUID companyId, CompanyPermission permission) {
         UUID actor = session.requireActiveUser();
         if (!actor.equals(actorId)) {

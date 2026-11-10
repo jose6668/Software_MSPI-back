@@ -34,6 +34,8 @@ import software.mspi.identidad.api.SessionIdentity;
 class ApiEvidenceController {
     static final String EVIDENCE = ApiEvaluationController.RESPONSE + "/evidencias";
     static final String CONTENT = EVIDENCE + "/{evidenciaId}/archivo";
+    static final String ACTION_CONTEXT_CONTENT =
+            ApiImprovementActionController.ACTION + "/evidencias-contexto/{evidenciaId}/archivo";
 
     private final ResponseEvidence evidence;
 
@@ -73,6 +75,15 @@ class ApiEvidenceController {
             @PathVariable UUID respuestaId, @PathVariable UUID evidenciaId,
             @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
         return file(evidence.download(target(empresaId, evaluacionId, respuestaId, actor, request), evidenciaId));
+    }
+
+    @GetMapping(path = ACTION_CONTEXT_CONTENT, produces = {"application/pdf", "image/png", "image/jpeg"})
+    ResponseEntity<byte[]> actionContext(@PathVariable UUID empresaId, @PathVariable UUID accionId,
+            @PathVariable UUID evidenciaId, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");
+        var target = new ResponseEvidence.ActionContextTarget(actor.usuarioId(), empresaId, accionId, evidenciaId,
+                ApiCorrelationFilter.id(request));
+        return file(evidence.downloadActionContext(target));
     }
 
     static ResponseEntity<byte[]> file(ResponseEvidence.Download download) {

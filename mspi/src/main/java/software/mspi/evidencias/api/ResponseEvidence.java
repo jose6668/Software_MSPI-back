@@ -11,8 +11,10 @@ public interface ResponseEvidence {
     Page list(Target target, int page, int size);
     Download download(Target target, UUID evidence);
     Optional<String> verifiedHash(Target target, UUID evidence);
+    Download downloadActionContext(ActionContextTarget target);
 
     record Target(UUID actor, UUID company, UUID evaluation, UUID response, UUID correlation) {}
+    record ActionContextTarget(UUID actor, UUID company, UUID action, UUID evidence, UUID correlation) {}
 
     record Metadata(UUID evidenciaId, String nombreOriginal, String tipoDetectado, int tamanoBytes,
                     String descripcion, UUID creadaPor, Instant creadaEn, String estadoInspeccion) {}

@@ -96,7 +96,7 @@ class ApiSecurityConfiguration {
                                 ApiEvaluationLifecycleController.CORRECTIONS, ApiEvaluationLifecycleController.CONFIRM)
                         .authenticated()
                         .requestMatchers(HttpMethod.GET, ApiEvidenceController.EVIDENCE,
-                                ApiEvidenceController.CONTENT).authenticated()
+                                ApiEvidenceController.CONTENT, ApiEvidenceController.ACTION_CONTEXT_CONTENT).authenticated()
                         .requestMatchers(HttpMethod.POST, ApiEvidenceController.EVIDENCE).authenticated()
                         .requestMatchers(HttpMethod.GET, ApiControlImplementationController.CONTROLS,
                                 ApiControlImplementationController.CONTROL, ApiControlImplementationController.VERSIONS,
@@ -117,6 +117,11 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, ApiResidualRiskController.RESIDUALS, ApiResidualRiskController.CONFIRM)
                         .authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiResidualRiskController.RESIDUAL).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiImprovementActionController.ACTIONS,
+                                ApiImprovementActionController.ACTION).authenticated()
+                        .requestMatchers(HttpMethod.POST, ApiImprovementActionController.ACTIONS,
+                                ApiImprovementActionController.CANCEL).authenticated()
+                        .requestMatchers(HttpMethod.PUT, ApiImprovementActionController.ACTION).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

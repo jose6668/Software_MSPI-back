@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.stereotype.Service;
 import software.mspi.auditoria.api.ActivityLog;
 import software.mspi.auditoria.api.SecurityIncidents;
+import software.mspi.acciones.api.ImprovementActions;
 import software.mspi.controles.api.ControlImplementations;
 import software.mspi.empresas.api.CompanyAccess;
 import software.mspi.empresas.api.CompanyPermission;
@@ -38,6 +39,7 @@ class JpaResponseEvidence implements ResponseEvidence, ControlEvidence {
     private final CompanyAccess access;
     private final EvaluationDrafts evaluations;
     private final ControlImplementations controls;
+    private final ImprovementActions actions;
     private final ActivityLog audit;
     private final EvidenceSettings settings;
     private final PrivateEvidenceFiles files;
@@ -48,13 +50,14 @@ class JpaResponseEvidence implements ResponseEvidence, ControlEvidence {
     private EntityManager entities;
 
     JpaResponseEvidence(TenantUnitOfWork work, CompanyAccess access, EvaluationDrafts evaluations, ControlImplementations controls,
-                        ActivityLog audit,
+                        ImprovementActions actions, ActivityLog audit,
                         EvidenceSettings settings, EvidenceAntimalware antimalware, SecurityIncidents incidents)
             throws IOException {
         this.work = work;
         this.access = access;
         this.evaluations = evaluations;
         this.controls = controls;
+        this.actions = actions;
         this.audit = audit;
         this.settings = settings;
         this.files = new PrivateEvidenceFiles(settings.directory());
@@ -159,6 +162,42 @@ class JpaResponseEvidence implements ResponseEvidence, ControlEvidence {
     @Override
     public Download download(ControlEvidence.Target target, UUID evidence) {
         return download(StoreTarget.control(target), evidence);
+    }
+
+    @Override
+    public Download downloadActionContext(ResponseEvidence.ActionContextTarget target) {
+        actions.requireContextEvidence(new ImprovementActions.Scope(target.actor(), target.company(), target.correlation()),
+                target.action(), target.evidence());
+        var record = work.execute(target.actor(), target.company(), CompanyPermission.READ_ASSIGNED_ACTIONS,
+                () -> entities.find(EvidenceRecord.class, target.evidence()));
+        if (record == null || !target.company().equals(record.company) || !"DISPONIBLE".equals(record.state)
+                || !"LIMPIA".equals(record.inspection)) throw new EvidenceFailure(MISSING);
+        try {
+            byte[] content = files.read(record);
+            try (var lease = antimalware.reserve()) {
+                var inspection = lease.inspect(content);
+                if (!inspection.clean()) {
+                    incidents.record(SecurityIncidents.Type.AMENAZA_EVIDENCIA, target.correlation());
+                    work.execute(target.actor(), target.company(), CompanyPermission.READ_ASSIGNED_ACTIONS, () -> {
+                        var current = entities.find(EvidenceRecord.class, target.evidence(), LockModeType.PESSIMISTIC_WRITE);
+                        if (current != null && target.company().equals(current.company)) {
+                            String previous = current.inspection;
+                            current.inspection = "BLOQUEADA";
+                            current.inspectedAt = inspection.at();
+                            current.engine = inspection.engine();
+                            entities.flush();
+                            audit.append(new ActivityLog.Event(target.company(), target.actor(), "INSPECCIONAR_EVIDENCIA",
+                                    "EVIDENCIA", current.id, previous, "BLOQUEADA", null, target.correlation()));
+                        }
+                        return null;
+                    });
+                    throw new EvidenceFailure(MALWARE);
+                }
+            }
+            return new Download(record.metadata(), content);
+        } catch (IOException failure) {
+            throw new EvidenceFailure(STORAGE);
+        }
     }
 
     private Download download(StoreTarget target, UUID evidence) {
