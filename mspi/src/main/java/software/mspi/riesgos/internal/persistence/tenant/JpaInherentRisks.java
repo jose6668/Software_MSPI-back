@@ -1,10 +1,12 @@
 package software.mspi.riesgos.internal.persistence.tenant;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -73,10 +75,21 @@ final class JpaInherentRisks implements InherentRisks, ResidualRisks {
 
     @Override
     public Risk create(Scope scope, String code, Details details) {
+        return register(scope, null, code, details);
+    }
+
+    @Override
+    public Risk createRelated(Scope scope, UUID original, String code, Details details) {
+        return register(scope, original, code, details);
+    }
+
+    private Risk register(Scope scope, UUID original, String code, Details details) {
         return write(scope, CompanyPermission.EDIT_RISKS, () -> {
+            if (original != null) requireState(find(scope, original, LockModeType.PESSIMISTIC_READ), State.CERRADO);
             requireAsset(scope.company(), details.activoPrincipalId());
             requireResponsible(scope.company(), details.responsableId());
             var risk = new RiskRecord(scope, code, details);
+            risk.related = original;
             entities.persist(risk);
             record(scope, risk.id, "RIESGO", "CREAR", null, risk.state.name(), null);
             return risk.view(null);
@@ -87,6 +100,10 @@ final class JpaInherentRisks implements InherentRisks, ResidualRisks {
     public Risk edit(Scope scope, UUID id, long revision, Details details, String reason) {
         return write(scope, CompanyPermission.EDIT_RISKS, () -> {
             var risk = editable(scope, id, revision);
+            if ((risk.state == State.EN_SEGUIMIENTO || risk.state == State.EN_TRATAMIENTO)
+                    && (risk.changesBasis(details) || !Objects.equals(risk.treatment, details.tratamientoPropuesto()))) {
+                throw new RiskFailure(STATE);
+            }
             if (!risk.asset.equals(details.activoPrincipalId())) requireAsset(scope.company(), details.activoPrincipalId());
             if (!risk.responsible.equals(details.responsableId())) requireResponsible(scope.company(), details.responsableId());
             if (risk.changesBasis(details)) {
@@ -280,21 +297,198 @@ final class JpaInherentRisks implements InherentRisks, ResidualRisks {
     }
 
     private InherentAssessment requireInherent(RiskRecord risk) {
-        requireState(risk, State.EN_ANALISIS);
+        requireAssessmentWork(risk);
+        return currentInherent(risk);
+    }
+
+    private InherentAssessment currentInherent(RiskRecord risk) {
         if (risk.current == null || risk.reviewReason != null) throw new RiskFailure(BASE_INHERENTE);
         var base = entities.find(InherentAssessment.class, risk.current);
         if (base == null || base.confirmedAt == null || base.context != risk.context) throw new RiskFailure(BASE_INHERENTE);
         return base;
     }
 
+    @Override
+    public Acceptance accept(Scope scope, UUID id, long revision, String reason, LocalDate reviewDate) {
+        return write(scope, CompanyPermission.ACCEPT_RISK, () -> {
+            var risk = editable(scope, id, revision);
+            if (risk.treatment != Treatment.ACEPTAR) throw new RiskFailure(STATE);
+            requireReason(reason);
+            requireCurrentAssessments(risk);
+            var now = Instant.now();
+            if (reviewDate == null || !reviewDate.isAfter(now.atZone(zone(scope)).toLocalDate())) {
+                throw new RiskFailure(ACCEPTANCE_DATE);
+            }
+            risk.revision++;
+            var acceptance = new RiskAcceptance(risk, scope.actor(), reason, reviewDate, now);
+            entities.persist(acceptance);
+            record(scope, acceptance.id, "ACEPTACION_RIESGO", "ACEPTAR_RIESGO", null, "VIGENTE", reason);
+            return acceptance.view("VIGENTE");
+        });
+    }
+
+    @Override
+    public Page<Acceptance> acceptances(Scope scope, UUID id, int page, int size) {
+        return read(scope, () -> {
+            var risk = find(scope, id, LockModeType.PESSIMISTIC_READ);
+            var current = latestAcceptance(risk);
+            var rows = window(acceptanceQuery(risk), page, size);
+            boolean valid = acceptanceCurrent(risk, current, zone(scope));
+            return page(rows, page, size, row -> row.view(!row.id.equals(current.id)
+                    ? "HISTORICA" : valid ? "VIGENTE" : "REVISION_PENDIENTE"));
+        });
+    }
+
+    @Override
+    public Risk transition(Scope scope, UUID id, long revision, State destination, String reason,
+                           Map<UUID, String> cancellations) {
+        return write(scope, CompanyPermission.TRANSITION_RISK, () -> {
+            var risk = editable(scope, id, revision);
+            requireReason(reason);
+            State previous = risk.state;
+            if (destination != State.CERRADO && !cancellations.isEmpty()) throw new RiskFailure(CANCELLATION_EXPLANATION);
+            switch (destination) {
+                case EN_ANALISIS -> {
+                    requireState(risk, State.EN_SEGUIMIENTO);
+                    risk.context++;
+                    risk.reviewReason = reason;
+                }
+                case EN_TRATAMIENTO -> {
+                    if (previous != State.EN_ANALISIS && previous != State.EN_SEGUIMIENTO) throw new RiskFailure(STATE);
+                    currentInherent(risk);
+                    if (previous == State.EN_SEGUIMIENTO) requireCurrentAssessments(risk);
+                    if (risk.treatment == null || actionStatus(risk).open().isEmpty()) throw new RiskFailure(PLAN_REQUIRED);
+                    requireApplicableAcceptance(risk, zone(scope));
+                }
+                case EN_SEGUIMIENTO -> {
+                    if (previous != State.EN_ANALISIS && previous != State.EN_TRATAMIENTO) throw new RiskFailure(STATE);
+                    if (risk.treatment == null) throw new RiskFailure(PLAN_REQUIRED);
+                    requireCurrentAssessments(risk);
+                    var actions = actionStatus(risk);
+                    if (!actions.open().isEmpty() || !actions.unjustified().isEmpty()) throw new RiskFailure(OPEN_ACTIONS);
+                    requireApplicableAcceptance(risk, zone(scope));
+                }
+                case CERRADO -> {
+                    requireState(risk, State.EN_SEGUIMIENTO);
+                    requireCurrentAssessments(risk);
+                    requireNoPendingAssessments(risk);
+                    var actions = actionStatus(risk);
+                    if (!actions.open().isEmpty() || !actions.unjustified().isEmpty()) throw new RiskFailure(OPEN_ACTIONS);
+                    if (!actions.cancelled().equals(cancellations.keySet())
+                            || cancellations.values().stream().anyMatch(value -> value == null || value.isBlank())) {
+                        throw new RiskFailure(CANCELLATION_EXPLANATION);
+                    }
+                    var acceptance = requireApplicableAcceptance(risk, zone(scope));
+                    risk.closureAcceptance = acceptance == null ? null : acceptance.id;
+                    risk.closureReason = reason;
+                    risk.closedAt = Instant.now();
+                    risk.closedBy = scope.actor();
+                    risk.closureCancellations = cancellations.entrySet().stream()
+                            .collect(Collectors.toMap(entry -> entry.getKey().toString(), entry -> entry.getValue().strip()));
+                }
+                default -> throw new RiskFailure(STATE);
+            }
+            risk.state = destination;
+            risk.revision++;
+            record(scope, id, "RIESGO", "TRANSICION_RIESGO", previous.name(), destination.name(), reason);
+            return view(risk);
+        });
+    }
+
+    private void requireCurrentAssessments(RiskRecord risk) {
+        var dependencies = new ResidualDependencies(entities);
+        dependencies.lockLinkedControls(risk);
+        if (!assessmentsCurrent(risk)) throw new RiskFailure(LIFECYCLE_ASSESSMENT);
+        var residual = entities.find(ResidualAssessment.class, risk.residual);
+        if (residual.selected.length != 0) {
+            dependencies.verify(risk, List.of(residual.selected),
+                    ZoneId.of(access.require(risk.company, CompanyPermission.READ_RISKS).zonaHoraria()));
+        }
+    }
+
+    private void requireNoPendingAssessments(RiskRecord risk) {
+        boolean pending = entities.createQuery("""
+                select count(v) from InherentAssessment v where v.company = :company and v.risk = :risk and v.confirmedAt is null
+                """, Long.class).setParameter("company", risk.company).setParameter("risk", risk.id).getSingleResult() != 0
+                || entities.createQuery("""
+                select count(v) from ResidualAssessment v where v.company = :company and v.risk = :risk and v.confirmedAt is null
+                """, Long.class).setParameter("company", risk.company).setParameter("risk", risk.id).getSingleResult() != 0;
+        if (pending) throw new RiskFailure(LIFECYCLE_ASSESSMENT);
+    }
+
+    private boolean assessmentsCurrent(RiskRecord risk) {
+        if (risk.current == null || risk.residual == null || risk.reviewReason != null) return false;
+        var inherent = entities.find(InherentAssessment.class, risk.current);
+        var residual = entities.find(ResidualAssessment.class, risk.residual);
+        return inherent != null && inherent.confirmedAt != null && inherent.context == risk.context
+                && residual != null && residual.confirmedAt != null && risk.current.equals(residual.inherent)
+                && new ResidualDependencies(entities).views(risk, List.of(residual)).get(0).vigente();
+    }
+
+    private TypedQuery<RiskAcceptance> acceptanceQuery(RiskRecord risk) {
+        return entities.createQuery("""
+                select a from RiskAcceptance a where a.company = :company and a.risk = :risk order by a.revision desc
+                """, RiskAcceptance.class).setParameter("company", risk.company).setParameter("risk", risk.id);
+    }
+
+    private RiskAcceptance latestAcceptance(RiskRecord risk) {
+        return acceptanceQuery(risk).setMaxResults(1).getResultList().stream().findFirst().orElse(null);
+    }
+
+    private RiskAcceptance requireApplicableAcceptance(RiskRecord risk, ZoneId zone) {
+        if (risk.treatment != Treatment.ACEPTAR) return null;
+        var acceptance = latestAcceptance(risk);
+        if (!acceptanceCurrent(risk, acceptance, zone)) throw new RiskFailure(ACCEPTANCE_REQUIRED);
+        return acceptance;
+    }
+
+    private boolean acceptanceCurrent(RiskRecord risk, RiskAcceptance acceptance, ZoneId zone) {
+        return acceptance != null && acceptance.reviewDate.isAfter(LocalDate.now(zone))
+                && acceptance.inherent.equals(risk.current) && acceptance.residual.equals(risk.residual)
+                && assessmentsCurrent(risk);
+    }
+
+    private ZoneId zone(Scope scope) {
+        return ZoneId.of(access.require(scope.company(), CompanyPermission.READ_RISKS).zonaHoraria());
+    }
+
+    private ActionStatus actionStatus(RiskRecord risk) {
+        var rows = entities.unwrap(org.hibernate.Session.class).createNativeQuery("""
+                select id, estado, motivo_cancelacion from acciones_mejora where empresa_id = :company and riesgo_id = :risk
+                """, Object[].class).setParameter("company", risk.company).setParameter("risk", risk.id).getResultList();
+        var open = new HashSet<UUID>();
+        var cancelled = new HashSet<UUID>();
+        var unjustified = new HashSet<UUID>();
+        for (var row : rows) {
+            UUID id = (UUID) row[0];
+            if ("CANCELADA".equals(row[1])) {
+                cancelled.add(id);
+                if (row[2] == null || row[2].toString().isBlank()) unjustified.add(id);
+            } else if (!"COMPLETADA".equals(row[1])) {
+                open.add(id);
+            }
+        }
+        return new ActionStatus(open, cancelled, unjustified);
+    }
+
+    private record ActionStatus(java.util.Set<UUID> open, java.util.Set<UUID> cancelled, java.util.Set<UUID> unjustified) {}
+
+    private static void requireReason(String reason) {
+        if (reason == null || reason.isBlank()) throw new RiskFailure(REASON);
+    }
+
     private ResidualAssessment residualDraft(RiskRecord risk, UUID id) {
-        requireState(risk, State.EN_ANALISIS);
+        requireAssessmentWork(risk);
         var residual = entities.find(ResidualAssessment.class, id);
         if (residual == null || !risk.company.equals(residual.company) || !risk.id.equals(residual.risk)) {
             throw new RiskFailure(MISSING);
         }
         if (residual.confirmedAt != null) throw new RiskFailure(STATE);
         return residual;
+    }
+
+    private static void requireAssessmentWork(RiskRecord risk) {
+        if (risk.state != State.EN_ANALISIS && risk.state != State.EN_TRATAMIENTO) throw new RiskFailure(STATE);
     }
 
     private List<Proof> requireMitigation(RiskRecord risk, ResidualAssessment residual, InherentAssessment base, ZoneId zone,
@@ -320,6 +514,7 @@ final class JpaInherentRisks implements InherentRisks, ResidualRisks {
     private RiskRecord editable(Scope scope, UUID id, long revision) {
         var risk = find(scope, id, LockModeType.PESSIMISTIC_WRITE);
         if (risk.revision != revision) throw new OptimisticLockingFailureException("Revisión desactualizada.");
+        if (risk.state == State.CERRADO) throw new RiskFailure(STATE);
         return risk;
     }
 

@@ -84,6 +84,7 @@ final class JpaImprovementActions implements ImprovementActions {
             access.requireActionAssignee(scope.company(), draft.assigneeMembership());
             var data = draftData(draft);
             validate(data, membership.zonaHoraria(), null);
+            requireOpenRisk(null, data.risk());
             var now = Instant.now();
             var action = new ImprovementActionRecord(UUID.randomUUID(), scope.company(),
                     "AC-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase(), data, scope.actor(), now);
@@ -107,6 +108,7 @@ final class JpaImprovementActions implements ImprovementActions {
             access.requireActionAssignee(scope.company(), draft.assigneeMembership());
             var data = draftData(draft);
             validate(data, membership.zonaHoraria(), action.dueDate);
+            requireOpenRisk(action.risk, data.risk());
             action.update(data, reason);
             replaceContext(scope, action, draft.contextEvidence(), Instant.now());
             entities.persist(new ActionEvent(action, "ACTUALIZADA", reason, scope.actor(), Instant.now()));
@@ -151,6 +153,15 @@ final class JpaImprovementActions implements ImprovementActions {
             if (selected == 0) throw missing();
             return null;
         });
+    }
+
+    private void requireOpenRisk(UUID previous, UUID next) {
+        var ids = java.util.stream.Stream.of(previous, next).filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return;
+        boolean closed = entities.unwrap(org.hibernate.Session.class).createNativeQuery("""
+                select estado from riesgos where id in (:ids) order by id for share
+                """, String.class).setParameterList("ids", ids).getResultList().contains("CERRADO");
+        if (closed) throw new ActionFailure(ActionFailure.Reason.STATE);
     }
 
     private UUID readableMembership(Scope scope) {

@@ -28,8 +28,15 @@ def sanitized(value):
 
 
 def run(arguments, *, text_input=None, allow_failure=False, timeout=180, environment=None):
-    result = subprocess.run(arguments, input=text_input, text=True, capture_output=True,
-                            env=environment or ENV, cwd=REPO, timeout=timeout)
+    try:
+        result = subprocess.run(arguments, input=text_input, text=True, capture_output=True,
+                                env=environment or ENV, cwd=REPO, timeout=timeout)
+    except subprocess.TimeoutExpired as failure:
+        # subprocess may return bytes for partial output even with text=True.
+        partial = "".join(output.decode("utf-8", errors="replace") if isinstance(output, bytes) else (output or "")
+                          for output in (failure.stdout, failure.stderr))
+        raise RuntimeError(f"La prueba de recursos agotó el plazo de {timeout} segundos.\n"
+                           + sanitized(partial)) from None
     if result.returncode and not allow_failure:
         raise RuntimeError("Fallo en prueba de recursos: " + sanitized(result.stdout + result.stderr))
     return result
@@ -87,7 +94,7 @@ def main():
         try:
             config = json.loads(compose("config", "--format", "json").stdout)
             assert not config["services"]["database"].get("ports"), "La base no debe publicar puertos"
-            compose("build", "backend", timeout=300)
+            compose("--progress", "plain", "build", "backend", timeout=420)
             compose("up", "-d", "database")
             wait_until(lambda: compose("exec", "-T", "database", "pg_isready", "-h", "127.0.0.1", "-U", "mspi_operator", "-d", "mspi",
                                       allow_failure=True).returncode == 0)

@@ -257,6 +257,18 @@ final class ApiErrors {
                         "Seleccione verificaciones o justifique la ausencia de mitigación conservando las categorías inherentes.");
                 case RESIDUAL_DRAFT_EXISTS -> new Problem(HttpStatus.CONFLICT, "BORRADOR_RESIDUAL_EXISTENTE",
                         "El riesgo ya tiene una valoración residual pendiente.");
+                case LIFECYCLE_ASSESSMENT -> new Problem(HttpStatus.CONFLICT, "VALORACIONES_RIESGO_NO_VIGENTES",
+                        "Se requieren valoraciones inherente y residual vigentes. Para cerrar, resuelva también los borradores pendientes.");
+                case ACCEPTANCE_REQUIRED -> new Problem(HttpStatus.CONFLICT, "ACEPTACION_RIESGO_NO_VIGENTE",
+                        "Se requiere una aceptación vigente aprobada por un administrador empresarial.");
+                case ACCEPTANCE_DATE -> new Problem(HttpStatus.BAD_REQUEST, "FECHA_REVISION_ACEPTACION_INVALIDA",
+                        "La revisión debe ser posterior al día empresarial de aprobación.");
+                case PLAN_REQUIRED -> new Problem(HttpStatus.CONFLICT, "TRATAMIENTO_RIESGO_INCOMPLETO",
+                        "Defina el tratamiento y vincule las acciones requeridas.");
+                case OPEN_ACTIONS -> new Problem(HttpStatus.CONFLICT, "ACCIONES_RIESGO_PENDIENTES",
+                        "Resuelva las acciones vinculadas al riesgo.");
+                case CANCELLATION_EXPLANATION -> new Problem(HttpStatus.CONFLICT, "EXPLICACION_CANCELACIONES_INVALIDA",
+                        "Explique cada acción cancelada en el cierre del riesgo.");
                 case RESIDUAL_INCOMPLETE -> new Problem(HttpStatus.CONFLICT, "VALORACION_RESIDUAL_INCOMPLETA",
                         "Complete los campos requeridos para confirmar.",
                         risk.fields().stream().map(field -> invalidField("datos.entradas." + field)).toList());

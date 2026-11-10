@@ -1,6 +1,8 @@
 package software.mspi.gestion.internal.web;
 
 import java.util.UUID;
+import java.time.LocalDate;
+import java.util.Map;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -38,6 +40,9 @@ class ApiInherentRiskController {
     static final String ASSESSMENT = ASSESSMENTS + "/{valoracionId}";
     static final String CONFIRM = ASSESSMENT + "/confirmar";
     static final String LINKS = RISK + "/implementaciones-control";
+    static final String TRANSITIONS = RISK + "/transiciones";
+    static final String ACCEPTANCES = RISK + "/aceptaciones";
+    static final String RELATED = RISK + "/riesgos-relacionados";
 
     private final InherentRisks risks;
 
@@ -119,6 +124,39 @@ class ApiInherentRiskController {
         return created(risks.link(scope(empresaId, actor, request), riesgoId, input.revisionEsperada(), input.implementacionId(),
                 input.efectoEsperado(), input.justificacion().strip()));
     }
+
+    @PostMapping(path = TRANSITIONS, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Risk> transition(@PathVariable UUID empresaId, @PathVariable UUID riesgoId,
+            @Valid @RequestBody Transition input, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return ok(risks.transition(scope(empresaId, actor, request), riesgoId, input.revisionEsperada(), input.destino(),
+                input.motivo().strip(), input.accionesCanceladas() == null ? Map.of() : input.accionesCanceladas()));
+    }
+
+    @PostMapping(path = ACCEPTANCES, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Acceptance> accept(@PathVariable UUID empresaId, @PathVariable UUID riesgoId,
+            @Valid @RequestBody ApproveAcceptance input, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return created(risks.accept(scope(empresaId, actor, request), riesgoId, input.revisionEsperada(),
+                input.justificacion().strip(), input.fechaProximaRevision()));
+    }
+
+    @GetMapping(path = ACCEPTANCES, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Page<Acceptance>> acceptances(@PathVariable UUID empresaId, @PathVariable UUID riesgoId,
+            @RequestParam(defaultValue = "0") @Min(0) int pagina, @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamano,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return ok(risks.acceptances(scope(empresaId, actor, request), riesgoId, pagina, tamano));
+    }
+
+    @PostMapping(path = RELATED, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Risk> createRelated(@PathVariable UUID empresaId, @PathVariable UUID riesgoId,
+            @Valid @RequestBody Create input, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return created(risks.createRelated(scope(empresaId, actor, request), riesgoId, input.codigo().strip(),
+                input.detalle().details()));
+    }
+
+    record Transition(@NotNull @PositiveOrZero Long revisionEsperada, @NotNull State destino,
+                      @NotBlank @Size(max = 2000) String motivo, Map<UUID, @NotBlank @Size(max = 2000) String> accionesCanceladas) {}
+    record ApproveAcceptance(@NotNull @PositiveOrZero Long revisionEsperada, @NotBlank @Size(max = 2000) String justificacion,
+                             @NotNull LocalDate fechaProximaRevision) {}
 
     static Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
         if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");

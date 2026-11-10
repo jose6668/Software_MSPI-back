@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.20.0'
+  version: '1.21.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1596,7 +1596,7 @@ paths:
           schema: {type: string, maxLength: 80}
         - name: estado
           in: query
-          schema: {type: string, enum: [IDENTIFICADO, EN_ANALISIS]}
+          schema: {type: string, enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
       responses:
         '200':
           description: Lista riesgos con filtros opcionales de código y estado
@@ -1681,6 +1681,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Risk'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/transiciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    post:
+      operationId: cambiarEstadoRiesgo
+      summary: Aplica una transición o registra el cierre del riesgo
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RiskTransition'}
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Risk'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/aceptaciones:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    get:
+      operationId: listarAceptacionesRiesgo
+      summary: Consulta las decisiones de aceptación y su vigencia
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPage'
+        - $ref: '#/components/parameters/CompanyPageSize'
+      responses:
+        '200':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RiskAcceptancePage'}
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: aprobarAceptacionRiesgo
+      summary: Aprueba la aceptación del riesgo con permiso AE
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApproveRiskAcceptance'}
+      responses:
+        '201':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RiskAcceptance'}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/riesgos-relacionados:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+      - $ref: '#/components/parameters/RiskId'
+    post:
+      operationId: registrarRiesgoRelacionado
+      summary: Registra un nuevo riesgo relacionado con un riesgo cerrado
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateRisk'}
+      responses:
+        '201':
+          description: Operación correcta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Risk'}
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/riesgos/{riesgoId}/iniciar-analisis:
@@ -3435,15 +3523,68 @@ components:
         revisionEsperada: {type: integer, format: int64, minimum: 0}
         detalle: {$ref: '#/components/schemas/RiskDetails'}
         motivo: {type: [string, 'null'], maxLength: 2000}
+    RiskTransition:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, destino, motivo]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        destino: {type: string, enum: [EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
+        motivo: {type: string, minLength: 1, maxLength: 2000}
+        accionesCanceladas:
+          type: [object, 'null']
+          propertyNames: {format: uuid}
+          additionalProperties: {type: string, minLength: 1, maxLength: 2000}
+    ApproveRiskAcceptance:
+      type: object
+      additionalProperties: false
+      required: [revisionEsperada, justificacion, fechaProximaRevision]
+      properties:
+        revisionEsperada: {type: integer, format: int64, minimum: 0}
+        justificacion: {type: string, minLength: 1, maxLength: 2000}
+        fechaProximaRevision: {type: string, format: date}
+    RiskAcceptance:
+      type: object
+      required: [aceptacionId, riesgoId, inherenteId, residualId, justificacion, fechaProximaRevision, aprobadaPor, aprobadaEn, estado, revisionRiesgo]
+      properties:
+        aceptacionId: {type: string, format: uuid}
+        riesgoId: {type: string, format: uuid}
+        inherenteId: {type: string, format: uuid}
+        residualId: {type: string, format: uuid}
+        justificacion: {type: string}
+        fechaProximaRevision: {type: string, format: date}
+        aprobadaPor: {type: string, format: uuid}
+        aprobadaEn: {type: string, format: date-time}
+        estado: {type: string, enum: [VIGENTE, REVISION_PENDIENTE, HISTORICA]}
+        revisionRiesgo: {type: integer, format: int64}
+    RiskAcceptancePage:
+      type: object
+      required: [elementos, pagina, tamano, hayMas]
+      properties:
+        elementos: {type: array, items: {$ref: '#/components/schemas/RiskAcceptance'}}
+        pagina: {type: integer, minimum: 0}
+        tamano: {type: integer, minimum: 1, maximum: 100}
+        hayMas: {type: boolean}
+    RiskClosure:
+      type: object
+      required: [justificacion, cerradaPor, cerradaEn, inherenteId, residualId, aceptacionId, accionesCanceladas]
+      properties:
+        justificacion: {type: string}
+        cerradaPor: {type: string, format: uuid}
+        cerradaEn: {type: string, format: date-time}
+        inherenteId: {type: string, format: uuid}
+        residualId: {type: string, format: uuid}
+        aceptacionId: {type: [string, 'null'], format: uuid}
+        accionesCanceladas: {type: object, additionalProperties: {type: string}}
     Risk:
       type: object
       additionalProperties: false
-      required: [riesgoId, codigo, detalle, estado, revision, inherenteVigenteId, nivelInherente, requiereRevision, motivoRevision, creadaPor, creadaEn]
+      required: [riesgoId, codigo, detalle, estado, revision, inherenteVigenteId, nivelInherente, requiereRevision, motivoRevision, creadaPor, creadaEn, riesgoRelacionadoId, cierre]
       properties:
         riesgoId: {type: string, format: uuid}
         codigo: {type: string, minLength: 1}
         detalle: {$ref: '#/components/schemas/RiskDetails'}
-        estado: {type: string, enum: [IDENTIFICADO, EN_ANALISIS]}
+        estado: {type: string, enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
         revision: {type: integer, format: int64, minimum: 0}
         inherenteVigenteId: {type: [string, 'null'], format: uuid}
         nivelInherente: {type: [string, 'null'], enum: [BAJO, MODERADO, ALTO, EXTREMO, null]}
@@ -3451,6 +3592,8 @@ components:
         motivoRevision: {type: [string, 'null'], maxLength: 2000}
         creadaPor: {type: string, format: uuid}
         creadaEn: {type: string, format: date-time}
+        riesgoRelacionadoId: {type: [string, 'null'], format: uuid}
+        cierre: {anyOf: [{$ref: '#/components/schemas/RiskClosure'}, {type: 'null'}]}
     InherentInputs:
       type: object
       additionalProperties: false
