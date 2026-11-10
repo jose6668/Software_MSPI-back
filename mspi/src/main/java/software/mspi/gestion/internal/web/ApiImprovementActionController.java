@@ -13,6 +13,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -32,6 +33,7 @@ import software.mspi.acciones.api.ImprovementActions.ContextEvidence;
 import software.mspi.acciones.api.ImprovementActions.Draft;
 import software.mspi.acciones.api.ImprovementActions.Page;
 import software.mspi.identidad.api.SessionIdentity;
+import software.mspi.evidencias.api.ActionEvidence;
 
 @RestController
 @ConditionalOnProperty(name = "mspi.tenancy.enabled", havingValue = "true")
@@ -39,11 +41,17 @@ class ApiImprovementActionController {
     static final String ACTIONS = "/api/v1/empresas/{empresaId}/acciones";
     static final String ACTION = ACTIONS + "/{accionId}";
     static final String CANCEL = ACTION + "/cancelar";
+    static final String ADVANCES = ACTION + "/avances";
+    static final String DELIVERIES = ACTION + "/entregas";
+    static final String DECISION = DELIVERIES + "/{entregaId}/decision";
+    static final String HISTORY = ACTION + "/historial";
 
     private final ImprovementActions actions;
+    private final ObjectProvider<ActionEvidence> evidence;
 
-    ApiImprovementActionController(ImprovementActions actions) {
+    ApiImprovementActionController(ImprovementActions actions, ObjectProvider<ActionEvidence> evidence) {
         this.actions = actions;
+        this.evidence = evidence;
     }
 
     @GetMapping(path = ACTIONS, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -79,7 +87,41 @@ class ApiImprovementActionController {
         return ok(actions.cancel(scope(empresaId, actor, request), accionId, input.revisionEsperada(), input.motivo().strip()));
     }
 
-    private static ImprovementActions.Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
+    @PostMapping(path = ADVANCES, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Action> advance(@PathVariable UUID empresaId, @PathVariable UUID accionId, @Valid @RequestBody Progress input,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return ok(actions.advance(scope(empresaId, actor, request), accionId, input.revisionEsperada(), input.comentario().strip()));
+    }
+
+    @PostMapping(path = DELIVERIES, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Action> submit(@PathVariable UUID empresaId, @PathVariable UUID accionId, @Valid @RequestBody Delivery input,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        var scope = scope(empresaId, actor, request);
+        return ok(actions.submit(scope, accionId, input.revisionEsperada(), input.comentario().strip(), input.evidenciaId(),
+                () -> verified(scope, accionId, input.evidenciaId())));
+    }
+
+    @PostMapping(path = DECISION, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Action> decide(@PathVariable UUID empresaId, @PathVariable UUID accionId, @PathVariable UUID entregaId,
+            @Valid @RequestBody Review input, @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        var scope = scope(empresaId, actor, request);
+        return ok(actions.decide(scope, accionId, entregaId, input.revisionEsperada(), input.decision() == Decision.APROBAR,
+                input.motivo().strip(), id -> verified(scope, accionId, id)));
+    }
+
+    @GetMapping(path = HISTORY, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<List<ImprovementActions.Event>> history(@PathVariable UUID empresaId, @PathVariable UUID accionId,
+            @RequestParam(defaultValue = "0") @Min(0) int pagina, @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamano,
+            @AuthenticationPrincipal SessionIdentity actor, HttpServletRequest request) {
+        return ok(actions.history(scope(empresaId, actor, request), accionId, pagina, tamano));
+    }
+
+    private boolean verified(ImprovementActions.Scope scope, UUID action, UUID id) {
+        var service = evidence.getIfAvailable();
+        return service != null && service.verify(scope, action, id);
+    }
+
+    static ImprovementActions.Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
         if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");
         return new ImprovementActions.Scope(actor.usuarioId(), company, ApiCorrelationFilter.id(request));
     }
@@ -92,6 +134,12 @@ class ApiImprovementActionController {
     record Edit(@NotNull @PositiveOrZero Long revisionEsperada, @NotNull @Valid Data datos,
                 @NotBlank @Size(max = 2000) String motivo) {}
     record Cancel(@NotNull @PositiveOrZero Long revisionEsperada, @NotBlank @Size(max = 2000) String motivo) {}
+    record Progress(@NotNull @PositiveOrZero Long revisionEsperada, @NotBlank @Size(max = 2000) String comentario) {}
+    record Delivery(@NotNull @PositiveOrZero Long revisionEsperada, @NotBlank @Size(max = 2000) String comentario,
+                    UUID evidenciaId) {}
+    record Review(@NotNull @PositiveOrZero Long revisionEsperada, @NotNull Decision decision,
+                  @NotBlank @Size(max = 2000) String motivo) {}
+    enum Decision { APROBAR, DEVOLVER }
     record Data(UUID riesgoId, UUID hallazgoId, @NotBlank String descripcion, @NotBlank String resultadoEsperado,
                 @NotNull UUID responsableMembresiaId, @NotNull LocalDate fechaLimite,
                 @NotNull Boolean evidenciaRequerida, @NotBlank @Size(max = 2000) String descripcionEvidencia,

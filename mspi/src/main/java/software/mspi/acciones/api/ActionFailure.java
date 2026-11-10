@@ -6,5 +6,5 @@ public final class ActionFailure extends RuntimeException {
     public ActionFailure(Reason reason) { this.reason = reason; }
     public Reason reason() { return reason; }
 
-    public enum Reason { MISSING, INVALID, STATE }
+    public enum Reason { MISSING, INVALID, STATE, EVIDENCE }
 }

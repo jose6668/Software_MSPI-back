@@ -268,6 +268,8 @@ final class ApiErrors {
                 case INVALID -> validation(List.of(invalidField("datos")));
                 case STATE -> new Problem(HttpStatus.CONFLICT, "ESTADO_ACCION_INCOMPATIBLE",
                         "El estado de la acción no admite esta operación.");
+                case EVIDENCE -> new Problem(HttpStatus.CONFLICT, "EVIDENCIA_ACCION_NO_DISPONIBLE",
+                        "La evidencia de la entrega debe pertenecer a la acción y superar la verificación.");
             };
         }
         if (failure instanceof ControlFailure control) {

@@ -32,6 +32,8 @@ class ImprovementActionRecord {
     @Column(name = "motivo_cambio") String changeReason;
     @Column(name = "creada_por", updatable = false) UUID author;
     @Column(name = "creada_en", updatable = false) Instant created;
+    @Column(name = "entrega_vigente_id") UUID delivery;
+    @Column(name = "finalizada_en") Instant completed;
 
     protected ImprovementActionRecord() {}
 
