@@ -1974,11 +1974,12 @@ class CompanyAuthorizationTests {
         member(editor, a(), "AE");
         var previousResponsible = account();
         UUID previousMembership = member(previousResponsible, a(), "RA");
+        member(previousResponsible, b(), "RA");
         var currentResponsible = account();
         UUID currentMembership = member(currentResponsible, a(), "RA");
-        var ae = login(editor);
-        var previousRa = login(previousResponsible);
-        var currentRa = login(currentResponsible);
+        var ae = login(editor, "203.0.113.101");
+        var previousRa = login(previousResponsible, "203.0.113.102");
+        var currentRa = login(currentResponsible, "203.0.113.103");
 
         var refs = assetReferences(a(), ae);
         UUID asset = classifiedAsset(a(), ae, "ACCION-ASSET", refs);
