@@ -149,7 +149,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "13");
+            fixture.metadata(fixture.third, "ACTIVA", "14");
         }
     }
 
@@ -192,13 +192,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "13");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "14");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "13");
+            fixture.metadata(fixture.first, "ACTIVA", "14");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -432,7 +432,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '13' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '14' WHERE id = ?", company);
         return company;
     }
 
@@ -1015,11 +1015,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "13");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "14");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "13");
+            fixture.metadata(fixture.first, "ACTIVA", "14");
         }
     }
 
@@ -2289,6 +2289,75 @@ class CompanyAuthorizationTests {
         mvc.perform(get(RESIDUALS, a(), related).session(session)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.elementos[0].vigente").value(false))
                 .andExpect(jsonPath("$.elementos[0].avisos[0].causa").value("VERSION_CONTROL_CAMBIADA"));
+    }
+
+    @Test
+    void closesRiskOnlyWithCurrentAcceptanceAndExplainedCancellations() throws Exception {
+        var administrator = account();
+        UUID assignee = member(administrator, a(), "AE");
+        var ae = login(administrator, "203.0.113.105");
+        var manager = account();
+        member(manager, a(), "GS");
+        var gs = login(manager, "203.0.113.106");
+        var refs = assetReferences(a(), ae);
+        UUID asset = classifiedAsset(a(), ae, "CIERRE-ACTIVO", refs);
+        var details = riskDetails(asset, refs.get("propietarioId"), "Evento a tratar");
+        UUID risk = id(catalogPost(RISKS, a(), gs, Map.of("codigo", "CIERRE-01", "detalle", details))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+        catalogPost(RISK + "/iniciar-analisis", a(), gs, Map.of("revisionEsperada", 0), risk).andExpect(status().isOk());
+        confirmInherentForResidual(gs, risk, 1, "BAJA", "LEVE", null);
+        var residualData = Map.of("entradas", riskInputs("BAJA", "LEVE"), "sinMitigacion", true,
+                "justificacionSinMitigacion", "Se acepta la exposición evaluada");
+        UUID residual = id(catalogPost(RESIDUALS, a(), gs, Map.of("revisionEsperada", 3, "datos", residualData), risk)
+                .andExpect(status().isCreated()).andReturn(), "residualId");
+        catalogPost(RESIDUAL + "/confirmar", a(), gs, Map.of("revisionEsperada", 4), risk, residual)
+                .andExpect(status().isOk());
+
+        String decisions = RISK + "/aceptaciones";
+        String transitions = RISK + "/transiciones";
+        var tomorrow = java.time.LocalDate.now(java.time.ZoneId.of("America/Bogota")).plusDays(1);
+        var approval = Map.of("revisionEsperada", 5, "justificacion", "Exposición tolerable", "fechaProximaRevision", tomorrow);
+        catalogPost(decisions, a(), gs, approval, risk).andExpect(status().isForbidden());
+        catalogPost(transitions, a(), gs, Map.of("revisionEsperada", 5, "destino", "EN_SEGUIMIENTO", "motivo", "Seguimiento"),
+                risk).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ACEPTACION_RIESGO_NO_VIGENTE"));
+        UUID accepted = id(catalogPost(decisions, a(), ae, approval, risk).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.residualId").value(residual.toString())).andReturn(), "aceptacionId");
+        mvc.perform(get(RISK, a(), risk).session(gs)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("EN_ANALISIS"));
+
+        var actionData = Map.of("riesgoId", risk, "descripcion", "Preparar revisión", "resultadoEsperado", "Revisión registrada",
+                "responsableMembresiaId", assignee, "fechaLimite", tomorrow, "evidenciaRequerida", false,
+                "descripcionEvidencia", "Comentario", "justificacionSinEvidencia", "Basta una nota", "resumenContextoRa", "Revisión");
+        UUID action = id(catalogPost(ACTIONS, a(), gs, Map.of("datos", actionData))
+                .andExpect(status().isCreated()).andReturn(), "accionId");
+        catalogPost(transitions, a(), gs, Map.of("revisionEsperada", 6, "destino", "EN_TRATAMIENTO", "motivo", "Plan registrado"),
+                risk).andExpect(status().isOk());
+        var follow = Map.of("revisionEsperada", 7, "destino", "EN_SEGUIMIENTO", "motivo", "Resultado revisado");
+        catalogPost(transitions, a(), gs, follow, risk).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ACCIONES_RIESGO_PENDIENTES"));
+        catalogPost(ACTION + "/cancelar", a(), gs, Map.of("revisionEsperada", 0, "motivo", "Cubierta por otro proceso"), action)
+                .andExpect(status().isOk());
+        catalogPost(transitions, a(), gs, follow, risk).andExpect(status().isOk());
+
+        String schema = fixture.first.scope().schema();
+        sql("UPDATE " + schema + ".aceptaciones_riesgo SET fecha_proxima_revision = ? WHERE id = ?", tomorrow.minusDays(1), accepted);
+        mvc.perform(get(decisions, a(), risk).session(gs)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].estado").value("REVISION_PENDIENTE"));
+        var explained = Map.of(action.toString(), "La revisión se realizó en el proceso de control operativo");
+        catalogPost(transitions, a(), gs, Map.of("revisionEsperada", 8, "destino", "CERRADO", "motivo", "Cierre",
+                "accionesCanceladas", explained), risk).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ACEPTACION_RIESGO_NO_VIGENTE"));
+        catalogPost(decisions, a(), ae, Map.of("revisionEsperada", 8, "justificacion", "Aceptación revisada", "fechaProximaRevision", tomorrow),
+                risk).andExpect(status().isCreated());
+        catalogPost(transitions, a(), gs, Map.of("revisionEsperada", 9, "destino", "CERRADO", "motivo", "Cierre"), risk)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EXPLICACION_CANCELACIONES_INVALIDA"));
+        catalogPost(transitions, a(), gs, Map.of("revisionEsperada", 9, "destino", "CERRADO", "motivo", "Cierre",
+                "accionesCanceladas", explained), risk).andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("CERRADO")).andExpect(jsonPath("$.cierre.cerradaPor").value(manager.id().toString()));
+        catalogPost(ACTIONS, a(), gs, Map.of("datos", actionData)).andExpect(status().isConflict());
+        catalogPost(RISK + "/riesgos-relacionados", a(), gs, Map.of("codigo", "CIERRE-02", "detalle", details), risk)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.estado").value("IDENTIFICADO"))
+                .andExpect(jsonPath("$.riesgoRelacionadoId").value(risk.toString()));
     }
 
     private UUID confirmInherentForResidual(MockHttpSession session, UUID risk, long revision, String probability,

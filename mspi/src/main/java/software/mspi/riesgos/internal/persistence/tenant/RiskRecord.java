@@ -2,6 +2,7 @@ package software.mspi.riesgos.internal.persistence.tenant;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.Map;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -9,6 +10,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import software.mspi.activos.api.BusinessCode;
 import software.mspi.riesgos.api.InherentRisks.*;
 
@@ -33,6 +36,13 @@ class RiskRecord {
     @Column(name = "motivo_revision") String reviewReason;
     @Column(name = "creada_por", updatable = false) UUID author;
     @Column(name = "creada_en", updatable = false) Instant created;
+    @Column(name = "riesgo_relacionado_id", updatable = false) UUID related;
+    @Column(name = "justificacion_cierre") String closureReason;
+    @Column(name = "cerrado_por") UUID closedBy;
+    @Column(name = "cerrado_en") Instant closedAt;
+    @Column(name = "aceptacion_cierre_id") UUID closureAcceptance;
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "cancelaciones_cierre") Map<String, String> closureCancellations;
 
     protected RiskRecord() {}
 
@@ -63,6 +73,8 @@ class RiskRecord {
 
     Risk view(Level level) {
         return new Risk(id, code, new Details(asset, threat, vulnerability, description, responsible, treatment),
-                state, revision, current, level, reviewReason != null, reviewReason, author, created);
+                state, revision, current, level, reviewReason != null, reviewReason, author, created, related,
+                closedAt == null ? null : new Closure(closureReason, closedBy, closedAt, current, residual,
+                        closureAcceptance, Map.copyOf(closureCancellations)));
     }
 }

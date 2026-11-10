@@ -107,10 +107,12 @@ class ApiSecurityConfiguration {
                                 ApiControlImplementationController.CHANGE, ApiControlImplementationController.VERIFY,
                                 ApiControlEvidenceController.EVIDENCE).authenticated()
                         .requestMatchers(HttpMethod.GET, ApiInherentRiskController.RISKS, ApiInherentRiskController.RISK,
-                                ApiInherentRiskController.ASSESSMENTS, ApiInherentRiskController.LINKS).authenticated()
+                                ApiInherentRiskController.ASSESSMENTS, ApiInherentRiskController.LINKS,
+                                ApiInherentRiskController.ACCEPTANCES).authenticated()
                         .requestMatchers(HttpMethod.POST, ApiInherentRiskController.RISKS, ApiInherentRiskController.ANALYZE,
                                 ApiInherentRiskController.ASSESSMENTS, ApiInherentRiskController.CONFIRM,
-                                ApiInherentRiskController.LINKS).authenticated()
+                                ApiInherentRiskController.LINKS, ApiInherentRiskController.ACCEPTANCES,
+                                ApiInherentRiskController.TRANSITIONS, ApiInherentRiskController.RELATED).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiInherentRiskController.RISK, ApiInherentRiskController.ASSESSMENT)
                         .authenticated()
                         .requestMatchers(HttpMethod.GET, ApiResidualRiskController.RESIDUALS).authenticated()

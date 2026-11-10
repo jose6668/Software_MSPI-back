@@ -125,35 +125,39 @@ def inventory(db):
             if state == "ACTIVA":
                 raise ValueError("Empresa activa sin esquema de evidencias.")
             continue
-        if version not in ("8", "9", "10", "11", "12", "13"):
-            raise ValueError("El inventario admite esquemas empresariales V8 a V13.")
+        if version not in ("8", "9", "10", "11", "12", "13", "14"):
+            raise ValueError("El inventario admite esquemas empresariales V8 a V14.")
         record = sql(db, f"""SELECT jsonb_build_object(
           'evaluaciones', (SELECT count(*) FROM "{schema}".evaluaciones),
           'cuota_ocupada', (SELECT bytes_ocupados FROM "{schema}".uso_evidencias),
           'evidencias', COALESCE((SELECT jsonb_agg(jsonb_build_array(empresa_id,id,tamano_bytes,
             huella_contenido,estado_inspeccion) ORDER BY id) FROM "{schema}".evidencias
             WHERE estado_carga = 'DISPONIBLE'), '[]'));""")
-        if version in ("9", "10", "11", "12", "13"):
+        if version in ("9", "10", "11", "12", "13", "14"):
             record["controles"] = sql(db, f"""SELECT jsonb_build_object(
               'implementaciones', (SELECT count(*) FROM "{schema}".implementaciones_control),
               'versiones', (SELECT count(*) FROM "{schema}".versiones_implementacion_control),
               'aplicaciones', (SELECT count(*) FROM "{schema}".aplicaciones_control),
               'verificaciones', (SELECT count(*) FROM "{schema}".verificaciones_control));""")
-        if version in ("10", "11", "12", "13"):
+        if version in ("10", "11", "12", "13", "14"):
             record["riesgos"] = sql(db, f"""SELECT jsonb_build_object(
               'registros', (SELECT count(*) FROM "{schema}".riesgos),
               'inherentes', (SELECT count(*) FROM "{schema}".valoraciones_inherentes),
               'vinculos', (SELECT count(*) FROM "{schema}".riesgos_implementaciones));""")
-        if version in ("11", "12", "13"):
+        if version in ("11", "12", "13", "14"):
             record["residuales"] = sql(db, f"""SELECT jsonb_build_object(
               'valoraciones', (SELECT count(*) FROM "{schema}".valoraciones_residuales),
               'verificaciones', (SELECT count(*) FROM "{schema}".residual_verificaciones),
               'avisos', (SELECT count(*) FROM "{schema}".avisos_revision_residual));""")
-        if version in ("12", "13"):
+        if version in ("12", "13", "14"):
             record["acciones"] = sql(db, f"""SELECT jsonb_build_object(
               'acciones', (SELECT count(*) FROM "{schema}".acciones_mejora),
               'contextos', (SELECT count(*) FROM "{schema}".accion_evidencias_contexto),
               'eventos', (SELECT count(*) FROM "{schema}".eventos_accion));""")
+        if version == "14":
+            record["tratamiento"] = sql(db, f"""SELECT jsonb_build_object(
+              'aceptaciones', (SELECT count(*) FROM "{schema}".aceptaciones_riesgo),
+              'cierres', (SELECT count(*) FROM "{schema}".riesgos WHERE estado = 'CERRADO'));""")
         occupied = 0
         for owner, item, length, digest, _ in record["evidencias"]:
             if owner != company:

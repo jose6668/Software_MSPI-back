@@ -167,6 +167,8 @@ public final class TenantRuntimeVerifier {
                   AND CASE c.relname
                     WHEN 'riesgos' THEN has_column_privilege(c.oid, 'revision', 'UPDATE')
                         AND has_column_privilege(c.oid, 'residual_vigente_id', 'UPDATE')
+                        AND has_column_privilege(c.oid, 'cerrado_en', 'UPDATE')
+                        AND NOT has_column_privilege(c.oid, 'riesgo_relacionado_id', 'UPDATE')
                         AND NOT has_column_privilege(c.oid, 'codigo_normalizado', 'UPDATE')
                     WHEN 'valoraciones_inherentes' THEN has_column_privilege(c.oid, 'confirmada_en', 'UPDATE')
                         AND NOT has_column_privilege(c.oid, 'version_metodologia_id', 'UPDATE')
@@ -174,6 +176,7 @@ public final class TenantRuntimeVerifier {
                     WHEN 'valoraciones_residuales' THEN has_column_privilege(c.oid, 'confirmada_en', 'UPDATE')
                         AND NOT has_column_privilege(c.oid, 'riesgo_id', 'UPDATE')
                     WHEN 'residual_verificaciones' THEN NOT has_any_column_privilege(c.oid, 'UPDATE')
+                    WHEN 'aceptaciones_riesgo' THEN NOT has_any_column_privilege(c.oid, 'UPDATE')
                     WHEN 'avisos_revision_residual' THEN NOT has_any_column_privilege(c.oid, 'INSERT')
                         AND NOT has_any_column_privilege(c.oid, 'UPDATE')
                     ELSE false END
@@ -181,7 +184,7 @@ public final class TenantRuntimeVerifier {
             statement.setString(1, scope.schema());
             statement.setString(2, scope.migrationRole());
             try (var rows = statement.executeQuery()) {
-                if (!rows.next() || rows.getInt(1) != 6) {
+                if (!rows.next() || rows.getInt(1) != 7) {
                     throw new IllegalStateException("Permisos de riesgos y valoraciones incompatibles.");
                 }
             }
