@@ -1974,7 +1974,6 @@ class CompanyAuthorizationTests {
         member(editor, a(), "AE");
         var previousResponsible = account();
         UUID previousMembership = member(previousResponsible, a(), "RA");
-        member(previousResponsible, b(), "RA");
         var currentResponsible = account();
         UUID currentMembership = member(currentResponsible, a(), "RA");
         var ae = login(editor, "203.0.113.101");
@@ -2004,7 +2003,7 @@ class CompanyAuthorizationTests {
         UUID action = id(created, "accionId");
         mvc.perform(get(ACTIONS, a()).session(previousRa)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.elementos.length()").value(1));
-        mvc.perform(get(ACTION, b(), action).session(previousRa)).andExpect(status().isNotFound());
+        mvc.perform(get(ACTION, b(), action).session(previousRa)).andExpect(status().isForbidden());
 
         var reassigned = new HashMap<>(details);
         reassigned.put("responsableMembresiaId", currentMembership);
