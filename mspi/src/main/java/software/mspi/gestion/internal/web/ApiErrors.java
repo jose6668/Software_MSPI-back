@@ -248,6 +248,17 @@ final class ApiErrors {
                         "Justifique un cambio de contexto valorado o una reevaluación. Omita el motivo en la primera valoración.");
                 case METHODOLOGY -> new Problem(HttpStatus.CONFLICT, "METODOLOGIA_RIESGO_NO_DISPONIBLE",
                         "No hay una matriz aprobada disponible para esta operación.");
+                case BASE_INHERENTE -> new Problem(HttpStatus.CONFLICT, "BASE_INHERENTE_NO_VIGENTE",
+                        "Revise el borrador con la valoración inherente confirmada y vigente del riesgo.");
+                case RESIDUAL_PROOF -> new Problem(HttpStatus.CONFLICT, "VERIFICACION_RESIDUAL_NO_DISPONIBLE",
+                        "Seleccione verificaciones vigentes y efectivas o parcialmente efectivas de controles vinculados.");
+                case RESIDUAL_MITIGATION -> new Problem(HttpStatus.CONFLICT, "MITIGACION_RESIDUAL_INVALIDA",
+                        "Seleccione verificaciones o justifique la ausencia de mitigación conservando las categorías inherentes.");
+                case RESIDUAL_DRAFT_EXISTS -> new Problem(HttpStatus.CONFLICT, "BORRADOR_RESIDUAL_EXISTENTE",
+                        "El riesgo ya tiene una valoración residual pendiente.");
+                case RESIDUAL_INCOMPLETE -> new Problem(HttpStatus.CONFLICT, "VALORACION_RESIDUAL_INCOMPLETA",
+                        "Complete los campos requeridos para confirmar.",
+                        risk.fields().stream().map(field -> invalidField("datos.entradas." + field)).toList());
             };
         }
         if (failure instanceof ControlFailure control) {

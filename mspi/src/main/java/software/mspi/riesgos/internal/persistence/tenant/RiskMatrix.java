@@ -1,9 +1,12 @@
 package software.mspi.riesgos.internal.persistence.tenant;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import software.mspi.riesgos.api.InherentRisks.Impact;
+import software.mspi.riesgos.api.InherentRisks.Inputs;
 import software.mspi.riesgos.api.InherentRisks.Level;
 import software.mspi.riesgos.api.InherentRisks.Probability;
 import software.mspi.riesgos.api.RiskFailure;
@@ -13,6 +16,17 @@ final class RiskMatrix {
     static final UUID V1 = UUID.fromString("4cbd3e6a-0382-4a97-b090-d68fe1105320");
 
     private RiskMatrix() {}
+
+    static List<String> missing(Inputs inputs) {
+        var fields = new ArrayList<String>();
+        if (inputs.probabilidad() == null) fields.add("probabilidad");
+        if (inputs.impacto() == null) fields.add("impacto");
+        if (inputs.periodoReferencia() == null) fields.add("periodoReferencia");
+        if (inputs.fundamento() == null) fields.add("fundamento");
+        if (inputs.supuestos() == null) fields.add("supuestos");
+        if (inputs.fuente() == null) fields.add("fuente");
+        return fields;
+    }
 
     static Calculated calculate(JsonNode rules, Probability probability, Impact impact) {
         var p = rules.path("probabilidad").path(probability.name()).path("indice");

@@ -96,6 +96,8 @@ class CompanyAuthorizationTests {
     private static final String RISK = RISKS + "/{riesgoId}";
     private static final String INHERENT = RISK + "/valoraciones-inherentes";
     private static final String RISK_LINKS = RISK + "/implementaciones-control";
+    private static final String RESIDUALS = RISK + "/valoraciones-residuales";
+    private static final String RESIDUAL = RESIDUALS + "/{residualId}";
     private static final String CONTROL_IMPLEMENTATIONS = "/api/v1/empresas/{empresaId}/implementaciones-control";
     private static final String CONTROL_IMPLEMENTATION = CONTROL_IMPLEMENTATIONS + "/{implementacionId}";
     private static final String CONTROL_VERSION = CONTROL_IMPLEMENTATION + "/versiones/{versionId}";
@@ -145,7 +147,7 @@ class CompanyAuthorizationTests {
             mvc.perform(get(PROBE + "/registros/{id}", a(), SHARED).session(session))
                     .andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.third, "ACTIVA", "10");
+            fixture.metadata(fixture.third, "ACTIVA", "11");
         }
     }
 
@@ -188,13 +190,13 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.code").value("NO_ENCONTRADO"));
         read(session, b(), onlyB).andExpect(status().isOk()).andExpect(jsonPath("$.valor").value("privado-b"));
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "10");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "11");
         try {
             mvc.perform(get(CONTEXT, a()).session(session)).andExpect(status().isForbidden());
             read(session, a(), SHARED).andExpect(status().isForbidden());
             read(session, b(), SHARED).andExpect(status().isOk());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "10");
+            fixture.metadata(fixture.first, "ACTIVA", "11");
         }
 
         sql("UPDATE comun.membresias SET estado = 'REVOCADA', revocada_en = CURRENT_TIMESTAMP WHERE id = ?", membershipB);
@@ -428,7 +430,7 @@ class CompanyAuthorizationTests {
 
     private UUID operableCompany() throws SQLException {
         UUID company = fixture.database.reserveTenant().scope().companyId();
-        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '10' WHERE id = ?", company);
+        sql("UPDATE comun.empresas SET estado = 'ACTIVA', version_estructura = '11' WHERE id = ?", company);
         return company;
     }
 
@@ -1011,11 +1013,11 @@ class CompanyAuthorizationTests {
                     .andExpect(status().isOk()).andExpect(jsonPath("$.disponibleNuevos").value(true));
         }
 
-        fixture.metadata(fixture.first, "SUSPENDIDA", "10");
+        fixture.metadata(fixture.first, "SUSPENDIDA", "11");
         try {
             mvc.perform(get(METHODOLOGIES, a()).session(ae)).andExpect(status().isForbidden());
         } finally {
-            fixture.metadata(fixture.first, "ACTIVA", "10");
+            fixture.metadata(fixture.first, "ACTIVA", "11");
         }
     }
 
@@ -2016,6 +2018,168 @@ class CompanyAuthorizationTests {
                 .andExpect(status().isCreated()).andReturn(), "riesgoId");
         catalogPost(RISK_LINKS, b(), session, link, other).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("IMPLEMENTACION_NO_DISPONIBLE"));
+    }
+
+    @Test
+    void confirmsUnmitigatedResidualAndPreservesHistoryWhenItsBasisChanges() throws Exception {
+        var editor = account();
+        member(editor, a(), "GS");
+        member(editor, b(), "GS");
+        var session = login(editor, "192.0.2.21");
+        var auditor = account();
+        member(auditor, a(), "AU");
+        var reader = login(auditor, "192.0.2.21");
+        var restricted = account();
+        member(restricted, a(), "RA");
+        var ra = login(restricted, "192.0.2.21");
+        var refs = assetReferences(a(), session);
+        UUID asset = classifiedAsset(a(), session, "RESIDUAL-SIN-MITIGACION", refs);
+        var details = riskDetails(asset, refs.get("propietarioId"), "Exposición original");
+        UUID risk = id(catalogPost(RISKS, a(), session, Map.of("codigo", "RES-SM", "detalle", details))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+        catalogPost(RISK + "/iniciar-analisis", a(), session, Map.of("revisionEsperada", 0), risk)
+                .andExpect(status().isOk());
+        var residualData = Map.of("entradas", riskInputs("BAJA", "LEVE"), "sinMitigacion", true,
+                "justificacionSinMitigacion", "Todavía no hay mitigación verificable");
+        catalogPost(RESIDUALS, a(), session, Map.of("revisionEsperada", 1, "datos", residualData), risk)
+                .andExpect(status().isConflict());
+        UUID inherent = confirmInherentForResidual(session, risk, 1, "MUY_BAJA", "CATASTROFICO", null);
+        catalogPost(RESIDUALS, a(), reader, Map.of("revisionEsperada", 3, "datos", residualData), risk)
+                .andExpect(status().isForbidden());
+        UUID residual = id(catalogPost(RESIDUALS, a(), session, Map.of("revisionEsperada", 3, "datos", residualData), risk)
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.inherenteId").value(inherent.toString()))
+                .andReturn(), "residualId");
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 4), risk, residual)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("MITIGACION_RESIDUAL_INVALIDA"));
+        var corrected = new HashMap<String, Object>(residualData);
+        corrected.put("entradas", riskInputs("MUY_BAJA", "CATASTROFICO"));
+        mvc.perform(put(RESIDUAL, a(), risk, residual).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", 4, "datos", corrected))))
+                .andExpect(status().isOk());
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 5), risk, residual)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nivel").value("EXTREMO"))
+                .andExpect(jsonPath("$.vigente").value(true)).andExpect(jsonPath("$.pruebas").isEmpty());
+        mvc.perform(get(RESIDUALS, b(), risk).session(session)).andExpect(status().isNotFound());
+        mvc.perform(get(RESIDUALS, a(), risk).session(ra)).andExpect(status().isForbidden());
+        try (var connection = fixture.database.connect(fixture.first.scope().runtimeRole(), fixture.first.runtimePassword());
+                var statement = connection.createStatement()) {
+            assertSqlState(() -> statement.executeUpdate("UPDATE valoraciones_residuales SET nivel = 'BAJO' WHERE id = '"
+                    + residual + "'"), "23514");
+        }
+        var changed = riskDetails(asset, refs.get("propietarioId"), "Exposición nueva");
+        mvc.perform(put(RISK, a(), risk).session(session).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("revisionEsperada", 6, "detalle", changed, "motivo", "Cambió el alcance"))))
+                .andExpect(status().isOk());
+        mvc.perform(get(RESIDUALS, a(), risk).session(reader)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].requiereRevision").value(true))
+                .andExpect(jsonPath("$.elementos[0].avisos[0].causa").value("CONTEXTO_CAMBIADO"));
+        UUID nextInherent = confirmInherentForResidual(session, risk, 7, "BAJA", "LEVE", "Fundamento actualizado");
+        UUID next = id(catalogPost(RESIDUALS, a(), session, Map.of("revisionEsperada", 9, "datos", residualData,
+                "motivoReevaluacion", "Nuevo alcance"), risk).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.anteriorId").value(residual.toString()))
+                .andExpect(jsonPath("$.inherenteId").value(nextInherent.toString())).andReturn(), "residualId");
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 10), risk, next)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nivel").value("BAJO"));
+        mvc.perform(get(RESIDUALS, a(), risk).session(reader)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[1].nivel").value("EXTREMO"))
+                .andExpect(jsonPath("$.elementos[1].vigente").value(false))
+                .andExpect(jsonPath("$.elementos[1].avisos[?(@.causa == 'INHERENTE_SUSTITUIDA')]").isNotEmpty())
+                .andExpect(jsonPath("$.elementos[1].avisos[*].resueltoEn").isNotEmpty());
+    }
+
+    @Test
+    void confirmsResidualOnlyWithLinkedProofAndSignalsInvalidation() throws Exception {
+        var editor = account();
+        member(editor, a(), "AE");
+        var session = login(editor, "192.0.2.21");
+        var refs = assetReferences(a(), session);
+        UUID asset = classifiedAsset(a(), session, "RESIDUAL-CON-MITIGACION", refs);
+        UUID risk = id(catalogPost(RISKS, a(), session, Map.of("codigo", "RES-CM", "detalle",
+                riskDetails(asset, refs.get("propietarioId"), "Amenaza mitigada")))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+        catalogPost(RISK + "/iniciar-analisis", a(), session, Map.of("revisionEsperada", 0), risk)
+                .andExpect(status().isOk());
+        confirmInherentForResidual(session, risk, 1, "ALTA", "MAYOR", null);
+        UUID edition = evaluationCatalog(new EvaluationItem("RES", "CONTROL", "DOM"));
+        var detail = controlDetail(a(), session);
+        var created = catalogPost(CONTROL_IMPLEMENTATIONS, a(), session, Map.of("versionCatalogoId", edition,
+                "elementoId", catalogElement(a(), session, edition, "RES"), "detalle", detail))
+                .andExpect(status().isCreated()).andReturn();
+        UUID control = id(created, "implementacionId");
+        UUID version = nestedId(created, "versionActual", "versionId");
+        catalogPost(CONTROL_IMPLEMENTATION + "/iniciar", a(), session, Map.of("revisionEsperada", 0), control)
+                .andExpect(status().isOk());
+        UUID application = uploadControlEvidence(a(), control, version, session, 1);
+        catalogPost(CONTROL_IMPLEMENTATION + "/confirmar-aplicacion", a(), session,
+                Map.of("revisionEsperada", 2, "fechaAplicacion", "2026-01-01", "evidenciaId", application), control)
+                .andExpect(status().isOk());
+        UUID proof = uploadControlEvidence(a(), control, version, session, 3);
+        UUID verification = id(catalogPost(CONTROL_IMPLEMENTATION + "/verificar", a(), session,
+                controlTest(4, proof, 2, 1, "2099-12-31"), control).andExpect(status().isCreated()).andReturn(), "verificacionId");
+        var data = Map.of("entradas", riskInputs("BAJA", "LEVE"), "sinMitigacion", false, "verificaciones", List.of(verification));
+        UUID residual = id(catalogPost(RESIDUALS, a(), session, Map.of("revisionEsperada", 3, "datos", data), risk)
+                .andExpect(status().isCreated()).andReturn(), "residualId");
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 4), risk, residual)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VERIFICACION_RESIDUAL_NO_DISPONIBLE"));
+        catalogPost(RISK_LINKS, a(), session, Map.of("revisionEsperada", 4, "implementacionId", control,
+                "efectoEsperado", "AMBOS", "justificacion", "La medida reduce la exposición y el impacto"), risk)
+                .andExpect(status().isCreated());
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 5), risk, residual)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nivel").value("BAJO"))
+                .andExpect(jsonPath("$.pruebas[0].verificacionId").value(verification.toString()))
+                .andExpect(jsonPath("$.pruebas[0].evidenciaAplicacionId").value(application.toString()));
+
+        UUID related = id(catalogPost(RISKS, a(), session, Map.of("codigo", "RES-COMPARTIDO", "detalle",
+                riskDetails(asset, refs.get("propietarioId"), "Otro riesgo asociado")))
+                .andExpect(status().isCreated()).andReturn(), "riesgoId");
+        catalogPost(RISK + "/iniciar-analisis", a(), session, Map.of("revisionEsperada", 0), related)
+                .andExpect(status().isOk());
+        confirmInherentForResidual(session, related, 1, "BAJA", "LEVE", null);
+        catalogPost(RISK_LINKS, a(), session, Map.of("revisionEsperada", 3, "implementacionId", control,
+                "efectoEsperado", "IMPACTO", "justificacion", "Asociación por revisar"), related)
+                .andExpect(status().isCreated());
+        UUID unmitigated = id(catalogPost(RESIDUALS, a(), session, Map.of("revisionEsperada", 4,
+                "datos", Map.of("entradas", riskInputs("BAJA", "LEVE"), "sinMitigacion", true,
+                        "justificacionSinMitigacion", "La prueba actual no demuestra mitigación para este riesgo")), related)
+                .andExpect(status().isCreated()).andReturn(), "residualId");
+        catalogPost(RESIDUAL + "/confirmar", a(), session, Map.of("revisionEsperada", 5), related, unmitigated)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.vigente").value(true));
+
+        String schema = fixture.first.scope().schema();
+        sql("UPDATE " + schema + ".residual_verificaciones SET vence_en = now() - interval '1 hour' WHERE residual_id = ?", residual);
+        mvc.perform(get(RESIDUALS, a(), risk).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].vigente").value(false))
+                .andExpect(jsonPath("$.elementos[0].avisos[0].causa").value("VERIFICACION_VENCIDA"));
+        sql("UPDATE " + schema + ".evidencias SET estado_inspeccion = 'BLOQUEADA', inspeccionada_en = now(),"
+                + " motor_firma = 'Fixture' WHERE id = ?", proof);
+        UUID newProof = uploadControlEvidence(a(), control, version, session, 5);
+        catalogPost(CONTROL_IMPLEMENTATION + "/verificar", a(), session,
+                controlTest(6, newProof, 2, 2, "2099-12-31"), control).andExpect(status().isCreated());
+        catalogPost(CONTROL_IMPLEMENTATION + "/cambiar", a(), session,
+                Map.of("revisionEsperada", 7, "detalle", detail, "motivo", "Cambio en la implementación"), control)
+                .andExpect(status().isOk());
+        mvc.perform(get(RESIDUALS, a(), risk).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].nivel").value("BAJO"))
+                .andExpect(jsonPath("$.elementos[0].requiereRevision").value(true))
+                .andExpect(jsonPath("$.elementos[0].avisos[?(@.causa == 'EVIDENCIA_BLOQUEADA')]").isNotEmpty())
+                .andExpect(jsonPath("$.elementos[0].avisos[?(@.causa == 'VERIFICACION_SUSTITUIDA')]").isNotEmpty())
+                .andExpect(jsonPath("$.elementos[0].avisos[?(@.causa == 'VERSION_CONTROL_CAMBIADA')]").isNotEmpty());
+        mvc.perform(get(RESIDUALS, a(), related).session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.elementos[0].vigente").value(false))
+                .andExpect(jsonPath("$.elementos[0].avisos[0].causa").value("VERSION_CONTROL_CAMBIADA"));
+    }
+
+    private UUID confirmInherentForResidual(MockHttpSession session, UUID risk, long revision, String probability,
+                                            String impact, String reason) throws Exception {
+        var input = new HashMap<String, Object>();
+        input.put("revisionEsperada", revision);
+        input.put("entradas", riskInputs(probability, impact));
+        if (reason != null) input.put("motivoReevaluacion", reason);
+        UUID valuation = id(catalogPost(INHERENT, a(), session, input, risk)
+                .andExpect(status().isCreated()).andReturn(), "valoracionId");
+        catalogPost(INHERENT + "/{valoracionId}/confirmar", a(), session, Map.of("revisionEsperada", revision + 1), risk, valuation)
+                .andExpect(status().isOk());
+        return valuation;
     }
 
     private static Map<String, Object> riskDetails(UUID asset, UUID responsible, String threat) {

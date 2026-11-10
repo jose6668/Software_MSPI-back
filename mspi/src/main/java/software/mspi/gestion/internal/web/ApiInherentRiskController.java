@@ -120,12 +120,12 @@ class ApiInherentRiskController {
                 input.efectoEsperado(), input.justificacion().strip()));
     }
 
-    private static Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
+    static Scope scope(UUID company, SessionIdentity actor, HttpServletRequest request) {
         if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");
         return new Scope(actor.usuarioId(), company, ApiCorrelationFilter.id(request));
     }
 
-    private static String normalized(String value) {
+    static String normalized(String value) {
         return value == null || value.isBlank() ? null : value.strip();
     }
 

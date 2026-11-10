@@ -2,7 +2,6 @@ package software.mspi.riesgos.internal.persistence.tenant;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,14 +66,7 @@ class InherentAssessment {
     }
 
     List<String> missing() {
-        var fields = new ArrayList<String>();
-        if (probability == null) fields.add("probabilidad");
-        if (impact == null) fields.add("impacto");
-        if (period == null) fields.add("periodoReferencia");
-        if (rationale == null) fields.add("fundamento");
-        if (assumptions == null) fields.add("supuestos");
-        if (source == null) fields.add("fuente");
-        return fields;
+        return RiskMatrix.missing(new Inputs(probability, impact, period, rationale, assumptions, source));
     }
 
     void confirm(RiskRecord root, RiskMatrix.Calculated result, UUID actor) {

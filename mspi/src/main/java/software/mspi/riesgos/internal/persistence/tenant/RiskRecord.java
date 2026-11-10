@@ -29,6 +29,7 @@ class RiskRecord {
     @Column(name = "revision") long revision;
     @Column(name = "contexto") long context;
     @Column(name = "inherente_vigente_id") UUID current;
+    @Column(name = "residual_vigente_id") UUID residual;
     @Column(name = "motivo_revision") String reviewReason;
     @Column(name = "creada_por", updatable = false) UUID author;
     @Column(name = "creada_en", updatable = false) Instant created;
