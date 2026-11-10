@@ -3,6 +3,7 @@ package software.mspi.catalogos.api;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import tools.jackson.databind.JsonNode;
@@ -15,8 +16,11 @@ public interface ReferenceCatalogs {
     Element element(UUID company, UUID version, UUID element);
     Page<MethodVersion> methodologies(UUID company, String code, Boolean available, int page, int size);
     MethodVersion methodology(UUID company, UUID version);
+    List<MethodReference> methodologyReferences(UUID company, Set<UUID> versions);
 
     enum Type { CONTROL, CLAUSULA }
+
+    record MethodReference(UUID versionId, String codigo, String version, String identificador, String nombre) {}
 
     record Page<T>(List<T> elementos, int pagina, int tamano, boolean hayMas) {}
 

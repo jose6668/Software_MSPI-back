@@ -28,8 +28,8 @@ final class JpaEvaluationPanelProjection implements EvaluationPanelProjection {
     }
 
     @Override
-    public Evaluations read(UUID actor, UUID company, LocalDate start, LocalDate end, int limit, long offset,
-               UUID evaluation, EvaluationState state) {
+    public Projection read(UUID actor, UUID company, LocalDate start, LocalDate end, int limit, long offset,
+                           UUID evaluation, EvaluationState state, boolean includeMethods) {
         return work.execute(actor, company, CompanyPermission.READ_PANEL, () -> {
             var session = entities.unwrap(Session.class);
             if (evaluation != null && !session.createNativeQuery("""
@@ -46,8 +46,9 @@ final class JpaEvaluationPanelProjection implements EvaluationPanelProjection {
                     .setParameter("offset", offset)
                     .setParameter("evaluation", evaluation, UUID.class)
                     .setParameter("evaluationState", state == null ? null : state.name(), String.class)
+                    .setParameter("includeMethods", includeMethods)
                     .getSingleResult();
-            return mapper.readValue(json, Evaluations.class);
+            return mapper.readValue(json, Projection.class);
         });
     }
 
@@ -65,7 +66,7 @@ final class JpaEvaluationPanelProjection implements EvaluationPanelProjection {
             ), page as (
                 select * from filtered order by fecha_evaluacion desc, id limit :pageSize offset :offset
             )
-            select cast(jsonb_build_object(
+            select cast(jsonb_build_object('datos', jsonb_build_object(
                 'total', (select count(*) from filtered),
                 'porEstado', coalesce((select jsonb_object_agg(estado, total)
                     from (select estado, count(*) as total from filtered group by estado) counts), '{}'),
@@ -87,6 +88,8 @@ final class JpaEvaluationPanelProjection implements EvaluationPanelProjection {
                                count(*) filter (where tipo = 'CLAUSULA' and calificacion is not null) as clausulas_evaluadas
                         from respuestas_evaluacion where empresa_id = e.empresa_id and evaluacion_id = e.id
                     ) r), '[]')
-            ) as text)
+            ), 'versionesMetodologia', case when :includeMethods then coalesce((
+                select jsonb_agg(distinct version_metodologia_id) from filtered
+            ), '[]') else '[]' end) as text)
             """;
 }

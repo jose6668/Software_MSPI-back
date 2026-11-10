@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.22.0'
+  version: '1.23.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1647,6 +1647,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CompanyPanel'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/reportes/basico:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: generarReporteBasicoEmpresa
+      summary: Obtiene los datos del reporte operativo para impresión en el navegador
+      description: >
+        Requiere AE, GS o AU con acceso vigente a la empresa. Comparte el alcance
+        y los filtros del panel. Desde y hasta son inclusivos y se aplican a la
+        fecha de evaluación, el día empresarial de creación del riesgo y la fecha
+        límite de la acción. Una evaluación indicada debe pertenecer a la empresa.
+        Las secciones omitidas tienen valor nulo. Una sección sin coincidencias
+        conserva su estructura con total cero y colecciones vacías.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: desde
+          in: query
+          schema: {type: string, format: date}
+        - name: hasta
+          in: query
+          schema: {type: string, format: date}
+        - name: evaluacionId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: estadoEvaluacion
+          in: query
+          schema: {type: string, enum: [BORRADOR, EN_REVISION, CERRADA]}
+        - name: estadoRiesgo
+          in: query
+          schema: {type: string, enum: [IDENTIFICADO, EN_ANALISIS, EN_TRATAMIENTO, EN_SEGUIMIENTO, CERRADO]}
+        - name: baseRiesgo
+          in: query
+          schema: {type: string, enum: [INHERENTE, RESIDUAL], default: RESIDUAL}
+        - name: situacionRiesgo
+          in: query
+          schema: {type: string, enum: [VIGENTE, PENDIENTE, REVISION_REQUERIDA]}
+        - name: nivelRiesgo
+          in: query
+          schema: {type: string, enum: [BAJO, MODERADO, ALTO, EXTREMO]}
+        - name: probabilidad
+          in: query
+          schema: {type: string, enum: [MUY_BAJA, BAJA, MEDIA, ALTA, MUY_ALTA]}
+        - name: impacto
+          in: query
+          schema: {type: string, enum: [LEVE, MENOR, MODERADO, MAYOR, CATASTROFICO]}
+        - name: estadoAccion
+          in: query
+          schema: {type: string, enum: [PENDIENTE, EN_EJECUCION, EN_REVISION, COMPLETADA, CANCELADA]}
+        - name: vencida
+          in: query
+          schema: {type: boolean}
+        - name: secciones
+          in: query
+          style: form
+          explode: true
+          description: Secciones del reporte. Si se omite, incluye las tres.
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 3
+            items: {type: string, enum: [EVALUACIONES, RIESGOS, ACCIONES]}
+      responses:
+        '200':
+          description: Reporte operativo con contexto, filtros, resultados y metodologías
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyBasicReport'
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/riesgos:
@@ -3593,6 +3669,57 @@ components:
         revisionEsperada: {type: integer, format: int64, minimum: 0}
         detalle: {$ref: '#/components/schemas/RiskDetails'}
         motivo: {type: [string, 'null'], maxLength: 2000}
+    CompanyBasicReport:
+      type: object
+      additionalProperties: false
+      required: [empresaId, empresa, zonaHoraria, generadoEn, filtros, secciones, evaluaciones, riesgos, acciones]
+      properties:
+        empresaId: {type: string, format: uuid}
+        empresa: {type: string}
+        zonaHoraria: {type: string}
+        generadoEn: {type: string, format: date-time}
+        filtros: {$ref: '#/components/schemas/PanelFilters'}
+        secciones:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {type: string, enum: [EVALUACIONES, RIESGOS, ACCIONES]}
+        evaluaciones: {anyOf: [{$ref: '#/components/schemas/ReportEvaluations'}, {type: 'null'}]}
+        riesgos: {anyOf: [{$ref: '#/components/schemas/ReportRisks'}, {type: 'null'}]}
+        acciones: {anyOf: [{$ref: '#/components/schemas/PanelActions'}, {type: 'null'}]}
+    ReportEvaluations:
+      type: object
+      additionalProperties: false
+      required: [datos, metodologias]
+      properties:
+        datos:
+          $ref: '#/components/schemas/PanelEvaluations'
+          description: Agregados y, si se selecciona una evaluación que coincide con los filtros, su avance y pendientes.
+        metodologias:
+          type: array
+          description: Versiones de metodología distintas de todas las evaluaciones filtradas.
+          items: {$ref: '#/components/schemas/ReportMethodReference'}
+    ReportRisks:
+      type: object
+      additionalProperties: false
+      required: [datos, metodologias]
+      properties:
+        datos: {$ref: '#/components/schemas/PanelRisks'}
+        metodologias:
+          type: array
+          description: Versiones distintas de las valoraciones asociadas a los riesgos filtrados, según la base seleccionada.
+          items: {$ref: '#/components/schemas/ReportMethodReference'}
+    ReportMethodReference:
+      type: object
+      additionalProperties: false
+      required: [versionId, codigo, version, identificador, nombre]
+      properties:
+        versionId: {type: string, format: uuid}
+        codigo: {type: string}
+        version: {type: string}
+        identificador: {type: string}
+        nombre: {type: string}
     CompanyPanel:
       type: object
       additionalProperties: false

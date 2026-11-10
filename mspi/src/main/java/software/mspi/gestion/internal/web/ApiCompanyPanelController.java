@@ -1,11 +1,16 @@
 package software.mspi.gestion.internal.web;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
@@ -25,6 +30,8 @@ import software.mspi.reportes.api.CompanyPanel;
 import software.mspi.reportes.api.CompanyPanel.Detail;
 import software.mspi.reportes.api.CompanyPanel.Filters;
 import software.mspi.reportes.api.CompanyPanel.Panel;
+import software.mspi.reportes.api.CompanyReport;
+import software.mspi.reportes.api.CompanyReport.Report;
 import software.mspi.riesgos.api.InherentRisks.Impact;
 import software.mspi.riesgos.api.InherentRisks.Level;
 import software.mspi.riesgos.api.InherentRisks.Probability;
@@ -36,11 +43,14 @@ import software.mspi.riesgos.api.RiskPanelProjection.Basis;
 @ConditionalOnProperty(name = "mspi.tenancy.enabled", havingValue = "true")
 class ApiCompanyPanelController {
     static final String PANEL = "/api/v1/empresas/{empresaId}/panel";
+    static final String REPORT = "/api/v1/empresas/{empresaId}/reportes/basico";
 
     private final CompanyPanel panel;
+    private final CompanyReport report;
 
-    ApiCompanyPanelController(CompanyPanel panel) {
+    ApiCompanyPanelController(CompanyPanel panel, CompanyReport report) {
         this.panel = panel;
+        this.report = report;
     }
 
     @GetMapping(path = PANEL, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -51,6 +61,17 @@ class ApiCompanyPanelController {
         if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(panel.read(actor.usuarioId(), empresaId, query.filters(), detalle, pagina, tamano));
+    }
+
+    @GetMapping(path = REPORT, produces = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<Report> report(@PathVariable UUID empresaId, @AuthenticationPrincipal SessionIdentity actor,
+                                  @Valid @ModelAttribute Query query,
+                                  @RequestParam(required = false) @Size(min = 1, max = 3)
+                                  List<@NotNull Detail> secciones) {
+        if (actor == null) throw new AccessDeniedException("Acceso empresarial no autorizado.");
+        var sections = secciones == null ? EnumSet.allOf(Detail.class) : Set.copyOf(secciones);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(report.generate(actor.usuarioId(), empresaId, query.filters(), sections));
     }
 
     record Query(@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
