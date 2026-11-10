@@ -3,5 +3,5 @@
  */
 @org.springframework.modulith.ApplicationModule(
 		displayName = "Empresas",
-		allowedDependencies = {"identidad::api"})
+		allowedDependencies = {"auditoria::api", "identidad::api"})
 package software.mspi.empresas;

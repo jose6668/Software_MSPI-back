@@ -129,6 +129,7 @@ class ApiSecurityConfiguration {
                         .requestMatchers(HttpMethod.PUT, ApiImprovementActionController.ACTION).authenticated()
                         .requestMatchers(HttpMethod.GET, ApiCompanyPanelController.PANEL,
                                 ApiCompanyPanelController.REPORT).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiCompanyActivityController.ACTIVITY).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())

@@ -37,7 +37,7 @@ final class TenantIsolationFixture {
         database.tenantFlyway(tenant).migrate();
         try (var connection = database.admin();
                 var statement = connection.prepareStatement(
-                        "UPDATE comun.empresas SET estado='ACTIVA', version_estructura='14' WHERE id=?")) {
+                        "UPDATE comun.empresas SET estado='ACTIVA', version_estructura='15' WHERE id=?")) {
             statement.setObject(1, tenant.scope().companyId());
             statement.executeUpdate();
         }

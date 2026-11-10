@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: API MSPI
-  version: '1.23.0'
+  version: '1.24.0'
   description: >-
     La version del contrato se puede consultar sin sesion. Todas las operaciones estan sujetas
     a limites de entrada: 429 DEMASIADAS_SOLICITUDES por direccion, 503 CAPACIDAD_AGOTADA
@@ -1577,6 +1577,57 @@ paths:
               schema: {type: string, format: binary}
             image/jpeg:
               schema: {type: string, format: binary}
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v1/empresas/{empresaId}/actividad:
+    parameters:
+      - $ref: '#/components/parameters/InvitationCompany'
+    get:
+      operationId: consultarActividadEmpresarial
+      summary: Consulta el registro administrativo de actividad de la empresa
+      description: >
+        Requiere AE con acceso vigente a la empresa. Devuelve eventos administrativos
+        y operativos ordenados del más reciente al más antiguo, con un desempate estable.
+        Los filtros se combinan. Desde es inclusivo y hasta exclusivo. Para continuar
+        la consulta, envíe el cursor de la página anterior junto con los mismos filtros.
+        Los códigos válidos sin coincidencias devuelven una página vacía.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CompanyPageSize'
+        - name: desde
+          in: query
+          schema: {type: string, format: date-time}
+        - name: hasta
+          in: query
+          schema: {type: string, format: date-time}
+        - name: actorId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: accion
+          in: query
+          schema: {type: string, pattern: '^[A-Z][A-Z0-9_]{0,79}$'}
+        - name: tipoObjeto
+          in: query
+          schema: {type: string, pattern: '^[A-Z][A-Z0-9_]{0,79}$'}
+        - name: objetoId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: cursor
+          in: query
+          schema: {type: string, minLength: 1, maxLength: 160}
+      responses:
+        '200':
+          description: Página del registro de actividad empresarial
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/CorrelationId'
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyActivityPage'
         default:
           $ref: '#/components/responses/Problem'
   /api/v1/empresas/{empresaId}/panel:
@@ -3669,6 +3720,34 @@ components:
         revisionEsperada: {type: integer, format: int64, minimum: 0}
         detalle: {$ref: '#/components/schemas/RiskDetails'}
         motivo: {type: [string, 'null'], maxLength: 2000}
+    CompanyActivityPage:
+      type: object
+      additionalProperties: false
+      required: [elementos, siguienteCursor]
+      properties:
+        elementos:
+          type: array
+          items: {$ref: '#/components/schemas/CompanyActivityEvent'}
+        siguienteCursor:
+          type: [string, 'null']
+          description: Posición opaca para solicitar la siguiente página. Nulo al final.
+    CompanyActivityEvent:
+      type: object
+      additionalProperties: false
+      required: [eventoId, origen, actorId, accion, tipoObjeto, objetoId, resultado, motivo, correlacionId, registradoEn]
+      properties:
+        eventoId:
+          type: string
+          description: Identificador del evento en su origen. Use la pareja origen y eventoId para distinguir eventos.
+        origen: {type: string, enum: [ADMINISTRATIVA, OPERATIVA]}
+        actorId: {type: string, format: uuid}
+        accion: {type: string}
+        tipoObjeto: {type: string}
+        objetoId: {type: string, format: uuid}
+        resultado: {type: string}
+        motivo: {type: [string, 'null'], maxLength: 2000}
+        correlacionId: {type: string, format: uuid}
+        registradoEn: {type: string, format: date-time}
     CompanyBasicReport:
       type: object
       additionalProperties: false
