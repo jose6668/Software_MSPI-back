@@ -2361,7 +2361,7 @@ class CompanyAuthorizationTests {
     }
 
     @Test
-    void panelReconcilesFilteredDetailsAndIsolatesCompanies() throws Exception {
+    void panelAndReportReconcileFilteredResultsAndIsolateCompanies() throws Exception {
         var editor = account();
         UUID membership = member(editor, a(), "AE");
         member(editor, b(), "AE");
@@ -2373,6 +2373,7 @@ class CompanyAuthorizationTests {
         member(responsible, a(), "RA");
         var ra = login(responsible, "203.0.113.109");
         String panel = "/api/v1/empresas/{empresaId}/panel";
+        String report = "/api/v1/empresas/{empresaId}/reportes/basico";
         mvc.perform(get(panel, a())).andExpect(status().isUnauthorized());
         mvc.perform(get(panel, a()).session(ra)).andExpect(status().isForbidden());
         mvc.perform(get(panel, b()).session(au)).andExpect(status().isForbidden());
@@ -2388,6 +2389,23 @@ class CompanyAuthorizationTests {
                 .andExpect(jsonPath("$.evaluaciones.elementos[0].sinDecidir").value(1))
                 .andExpect(jsonPath("$.evaluaciones.elementos[0].versionMetodologiaId").value(method.toString()));
         mvc.perform(get(panel, b()).session(ae).param("evaluacionId", evaluation.toString())).andExpect(status().isNotFound());
+        mvc.perform(get(report, a())).andExpect(status().isUnauthorized());
+        mvc.perform(get(report, a()).session(ra)).andExpect(status().isForbidden());
+        mvc.perform(get(report, b()).session(au)).andExpect(status().isForbidden());
+        mvc.perform(get(report, b()).session(ae).param("evaluacionId", evaluation.toString())).andExpect(status().isNotFound());
+        mvc.perform(get(report, a()).session(au).param("secciones", "ACTIVIDAD")).andExpect(status().isBadRequest());
+        mvc.perform(get(report, a()).session(au).param("secciones", "EVALUACIONES")
+                        .param("evaluacionId", evaluation.toString()))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.empresaId").value(a().toString()))
+                .andExpect(jsonPath("$.generadoEn").isNotEmpty()).andExpect(jsonPath("$.zonaHoraria").isNotEmpty())
+                .andExpect(jsonPath("$.secciones.length()").value(1))
+                .andExpect(jsonPath("$.secciones[0]").value("EVALUACIONES"))
+                .andExpect(jsonPath("$.riesgos").isEmpty()).andExpect(jsonPath("$.acciones").isEmpty())
+                .andExpect(jsonPath("$.evaluaciones.datos.elementos[0].sinDecidir").value(1))
+                .andExpect(jsonPath("$.evaluaciones.metodologias.length()").value(1))
+                .andExpect(jsonPath("$.evaluaciones.metodologias[0].versionId").value(method.toString()))
+                .andExpect(jsonPath("$.evaluaciones.metodologias[0].identificador").isNotEmpty());
 
         var refs = assetReferences(a(), ae);
         UUID asset = classifiedAsset(a(), ae, "PANEL-ACTIVO", refs);
@@ -2453,6 +2471,24 @@ class CompanyAuthorizationTests {
                         .param("detalle", "ACCIONES").param("vencida", "true"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.acciones.total").value(1))
                 .andExpect(jsonPath("$.acciones.elementos[0].accionId").value(open.toString()));
+
+        var panelResult = mvc.perform(get(panel, a()).session(au)
+                        .param("desde", "2020-01-02").param("hasta", "2020-01-02"))
+                .andExpect(status().isOk()).andReturn();
+        var reportResult = mvc.perform(get(report, a()).session(au)
+                        .param("desde", "2020-01-02").param("hasta", "2020-01-02"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.secciones.length()").value(3))
+                .andExpect(jsonPath("$.evaluaciones.metodologias").isEmpty())
+                .andExpect(jsonPath("$.riesgos.metodologias.length()").value(1))
+                .andExpect(jsonPath("$.riesgos.metodologias[0].identificador").isNotEmpty())
+                .andReturn();
+        var panelJson = mapper.readTree(panelResult.getResponse().getContentAsByteArray());
+        var reportJson = mapper.readTree(reportResult.getResponse().getContentAsByteArray());
+        assertThat(reportJson.path("filtros")).isEqualTo(panelJson.path("filtros"));
+        assertThat(reportJson.path("evaluaciones").path("datos")).isEqualTo(panelJson.path("evaluaciones"));
+        assertThat(reportJson.path("riesgos").path("datos")).isEqualTo(panelJson.path("riesgos"));
+        assertThat(reportJson.path("acciones")).isEqualTo(panelJson.path("acciones"));
     }
 
     private UUID confirmInherentForResidual(MockHttpSession session, UUID risk, long revision, String probability,

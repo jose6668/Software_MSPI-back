@@ -7,7 +7,9 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -85,6 +87,20 @@ final class JdbcReferenceCatalogs implements ReferenceCatalogs {
     public MethodVersion methodology(UUID company, UUID version) {
         requireAccess(company);
         return version(METHODS, version, this::methodVersion);
+    }
+
+    @Override
+    public List<MethodReference> methodologyReferences(UUID company, Set<UUID> versions) {
+        requireAccess(company);
+        if (versions.isEmpty()) return List.of();
+        String ids = versions.stream().map(UUID::toString).collect(Collectors.joining(",", "{", "}"));
+        return jdbc.sql("""
+                SELECT version_id, codigo, version, identificador, nombre FROM comun.metodologias_publicadas
+                WHERE version_id = ANY (CAST(:ids AS uuid[]))
+                ORDER BY codigo, version, version_id
+                """).param("ids", ids).query((row, index) -> new MethodReference(
+                        row.getObject("version_id", UUID.class), row.getString("codigo"), row.getString("version"),
+                        row.getString("identificador"), row.getString("nombre"))).list();
     }
 
     private <T> Page<T> versions(String query, String code, Boolean available, int page, int size, RowMapper<T> mapping) {

@@ -33,9 +33,9 @@ final class JpaRiskPanelProjection implements RiskPanelProjection {
     }
 
     @Override
-    public Risks read(UUID actor, UUID company, LocalDate start, LocalDate end, int limit, long offset,
+    public Projection read(UUID actor, UUID company, LocalDate start, LocalDate end, int limit, long offset,
                       Basis basis, State state, AssessmentStatus situation,
-                      Level level, Probability probability, Impact impact, ZoneId zone, Instant now) {
+                      Level level, Probability probability, Impact impact, ZoneId zone, Instant now, boolean includeMethods) {
         return work.execute(actor, company, CompanyPermission.READ_PANEL, () -> {
             var session = entities.unwrap(Session.class);
             var json = session.createNativeQuery(SQL, String.class)
@@ -52,8 +52,9 @@ final class JpaRiskPanelProjection implements RiskPanelProjection {
                     .setParameter("level", name(level), String.class)
                     .setParameter("probability", name(probability), String.class)
                     .setParameter("impact", name(impact), String.class)
+                    .setParameter("includeMethods", includeMethods)
                     .getSingleResult();
-            return mapper.readValue(json, Risks.class);
+            return mapper.readValue(json, Projection.class);
         });
     }
 
@@ -104,7 +105,7 @@ final class JpaRiskPanelProjection implements RiskPanelProjection {
             ), page as (
                 select * from filtered order by creada_en desc, id limit :pageSize offset :offset
             )
-            select cast(jsonb_build_object(
+            select cast(jsonb_build_object('datos', jsonb_build_object(
                 'total', (select count(*) from filtered),
                 'porEstado', coalesce((select jsonb_object_agg(estado, total)
                     from (select estado, count(*) as total from filtered group by estado) counts), '{}'),
@@ -126,6 +127,8 @@ final class JpaRiskPanelProjection implements RiskPanelProjection {
                     'probabilidad', case when situation = 'VIGENTE' then probability end,
                     'impacto', case when situation = 'VIGENTE' then impact end
                 ) order by creada_en desc, id) from page), '[]')
-            ) as text)
+            ), 'versionesMetodologia', case when :includeMethods then coalesce((
+                select jsonb_agg(distinct method) from filtered where method is not null
+            ), '[]') else '[]' end) as text)
             """;
 }

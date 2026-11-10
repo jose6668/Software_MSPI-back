@@ -127,7 +127,8 @@ class ApiSecurityConfiguration {
                                 ApiImprovementActionController.DELIVERIES, ApiImprovementActionController.DECISION,
                                 ApiEvidenceController.ACTION_EVIDENCE).authenticated()
                         .requestMatchers(HttpMethod.PUT, ApiImprovementActionController.ACTION).authenticated()
-                        .requestMatchers(HttpMethod.GET, ApiCompanyPanelController.PANEL).authenticated()
+                        .requestMatchers(HttpMethod.GET, ApiCompanyPanelController.PANEL,
+                                ApiCompanyPanelController.REPORT).authenticated()
                         .requestMatchers("/api/v1/empresas/**", "/api/v1/mis-empresas").denyAll()
                         .anyRequest().authenticated())
                 .requestCache(cache -> cache.disable())
